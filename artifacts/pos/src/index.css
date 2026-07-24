@@ -1,0 +1,855 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-border: var(--primary-border);
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary-border: var(--secondary-border);
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-muted-border: var(--muted-border);
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-border: var(--accent-border);
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-destructive-border: var(--destructive-border);
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-primary-border: var(--sidebar-primary-border);
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-accent-border: var(--sidebar-accent-border);
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --font-sans: var(--app-font-sans);
+  --font-serif: var(--app-font-serif);
+  --font-mono: var(--app-font-mono);
+
+  --text-xs: 0.75rem;
+  --text-xs--line-height: calc(1 / 0.75);
+  --text-sm: 0.875rem;
+  --text-sm--line-height: calc(1.25 / 0.875);
+  --text-base: 1rem;
+  --text-base--line-height: calc(1.5 / 1);
+  --text-lg: 1.125rem;
+  --text-lg--line-height: calc(1.75 / 1.125);
+  --text-xl: 1.25rem;
+  --text-xl--line-height: calc(1.75 / 1.25);
+  --text-2xl: 1.5rem;
+  --text-2xl--line-height: calc(2 / 1.5);
+  --text-3xl: 1.875rem;
+  --text-3xl--line-height: calc(2.25 / 1.875);
+  --text-4xl: 2.25rem;
+  --text-4xl--line-height: calc(2.5 / 2.25);
+  --text-5xl: 3rem;
+  --text-5xl--line-height: 1;
+  --text-6xl: 3.75rem;
+  --text-6xl--line-height: 1;
+  --text-7xl: 4.5rem;
+  --text-7xl--line-height: 1;
+  --text-8xl: 6rem;
+  --text-8xl--line-height: 1;
+  --text-9xl: 8rem;
+  --text-9xl--line-height: 1;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* LIGHT MODE */
+:root {
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
+
+  /* Automatic computation of border around primary / danger buttons */
+  --opaque-button-border-intensity: -8; /* In terms of percentages */
+
+  /* Backgrounds applied on top of other backgrounds when hovered/active */
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .08);
+
+  --background: 210 40% 98%;
+
+  --foreground: 222 47% 11%;
+
+  --border: 214 32% 91%;
+
+  --card: 0 0% 100%;
+
+  --card-foreground: 222 47% 11%;
+
+  --card-border: 214 32% 91%;
+
+  --sidebar: 222 47% 11%;
+
+  --sidebar-foreground: 215 20% 80%;
+
+  --sidebar-border: 217 33% 20%;
+
+  --sidebar-primary: 38 92% 50%;
+
+  --sidebar-primary-foreground: 222 47% 11%;
+
+  --sidebar-accent: 217 33% 17%;
+
+  --sidebar-accent-foreground: 0 0% 100%;
+
+  --sidebar-ring: 38 92% 50%;
+
+  --popover: 0 0% 100%;
+
+  --popover-foreground: 222 47% 11%;
+
+  --popover-border: 214 32% 91%;
+
+  --primary: 38 92% 50%;
+
+  --primary-foreground: 222 47% 11%;
+
+  --secondary: 210 40% 96%;
+
+  --secondary-foreground: 222 47% 11%;
+
+  --muted: 210 40% 96%;
+
+  --muted-foreground: 215 16% 47%;
+
+  --accent: 210 40% 96%;
+
+  --accent-foreground: 222 47% 11%;
+
+  --destructive: 0 72% 51%;
+
+  --destructive-foreground: 0 0% 100%;
+
+  --input: 214 32% 91%;
+  --ring: 38 92% 50%;
+  --chart-1: 38 92% 50%;
+  --chart-2: 217 91% 60%;
+  --chart-3: 142 71% 45%;
+  --chart-4: 271 81% 56%;
+  --chart-5: 0 72% 51%;
+
+  --app-font-sans: 'Cairo', sans-serif;
+  --app-font-serif: Georgia, serif;
+  --app-font-mono: Menlo, monospace;
+  --radius: .5rem; /* 8px */
+  --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
+  --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00); /*replace with H S L */
+  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 2px 4px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+
+  /* Automatically computed borders - intensity can be controlled by the user by the --opaque-button-border-intensity setting */
+
+  /* Fallback for older browsers */
+  --sidebar-primary-border: hsl(var(--sidebar-primary));
+  --sidebar-primary-border: hsl(from hsl(var(--sidebar-primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --sidebar-accent-border: hsl(var(--sidebar-accent));
+  --sidebar-accent-border: hsl(from hsl(var(--sidebar-accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --primary-border: hsl(var(--primary));
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --secondary-border: hsl(var(--secondary));
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --muted-border: hsl(var(--muted));
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --accent-border: hsl(var(--accent));
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+
+  /* Fallback for older browsers */
+  --destructive-border: hsl(var(--destructive));
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+.dark {
+  --button-outline: rgba(255,255,255, .10);
+  --badge-outline: rgba(255,255,255, .05);
+
+  --opaque-button-border-intensity: 9;  /* In terms of percentages */
+
+  /* Backgrounds applied on top of other backgrounds when hovered/active */
+  --elevate-1: rgba(255,255,255, .04);
+  --elevate-2: rgba(255,255,255, .09);
+
+  --background: red; /*replace with H S L */
+
+  --foreground: red; /*replace with H S L */
+
+  --border: red; /*replace with H S L */
+
+  --card: red; /*replace with H S L */
+
+  --card-foreground: red; /*replace with H S L */
+
+  --card-border: red; /*replace with H S L */
+
+  --sidebar: red; /*replace with H S L */
+
+  --sidebar-foreground: red; /*replace with H S L */
+
+  --sidebar-border: red; /*replace with H S L */
+
+  --sidebar-primary: red; /*replace with H S L */
+
+  --sidebar-primary-foreground: red; /*replace with H S L */
+
+  --sidebar-accent: red; /*replace with H S L */
+
+  --sidebar-accent-foreground: red; /*replace with H S L */
+
+  --sidebar-ring: red; /*replace with H S L */
+
+  --popover: red; /*replace with H S L */
+
+  --popover-foreground: red; /*replace with H S L */
+
+  --popover-border: red; /*replace with H S L */
+
+  --primary: red; /*replace with H S L */
+
+  --primary-foreground: red; /*replace with H S L */
+
+  --secondary: red; /*replace with H S L */
+
+  --secondary-foreground: red; /*replace with H S L */
+
+  --muted: red; /*replace with H S L */
+
+  --muted-foreground: red; /*replace with H S L */
+
+  --accent: red; /*replace with H S L */
+
+  --accent-foreground: red; /*replace with H S L */
+
+  --destructive: red; /*replace with H S L */
+
+  --destructive-foreground: red; /*replace with H S L */
+
+  /* Used as the border around inputs. Dark mode: Should be a border that is light enough to have high contrast when rendered on a --card background. More contrast than standard --border */
+  --input: red; /*replace with H S L */
+  --ring: red; /*replace with H S L */
+  --chart-1: red; /*replace with H S L */
+  --chart-2: red; /*replace with H S L */
+  --chart-3: red; /*replace with H S L */
+  --chart-4: red; /*replace with H S L */
+  --chart-5: red; /*replace with H S L */
+
+  --shadow-2xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 1px 2px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 2px 4px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 4px 6px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00), 0px 8px 10px -1px hsl(202.8169 89.1213% 53.1373% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(202.8169 89.1213% 53.1373% / 0.00);
+
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+/**
+ * Using the elevate system.
+ * Automatic contrast adjustment.
+ *
+ * <element className="hover-elevate" />
+ * <element className="active-elevate-2" />
+ *
+ * // Using the tailwind utility when a data attribute is "on"
+ * <element className="toggle-elevate data-[state=on]:toggle-elevated" />
+ * // Or manually controlling the toggle state
+ * <element className="toggle-elevate toggle-elevated" />
+ *
+ * Elevation systems have to handle many states.
+ * - not-hovered, vs. hovered vs. active  (three mutually exclusive states)
+ * - toggled or not
+ * - focused or not (this is not handled with these utilities)
+ *
+ * Even without handling focused or not, this is six possible combinations that
+ * need to be distinguished from eachother visually.
+ */
+@layer utilities {
+
+  /* Hide ugly search cancel button in Chrome until we can style it properly */
+  input[type="search"]::-webkit-search-cancel-button {
+    @apply hidden;
+  }
+
+  /* Placeholder styling for contentEditable div */
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+
+  /* .no-default-hover-elevate/no-default-active-elevate is an escape hatch so consumers of
+   * buttons/badges can remove the automatic brightness adjustment on interactions
+   * and program their own. */
+  .no-default-hover-elevate {}
+
+  .no-default-active-elevate {}
+
+
+  /**
+   * Toggleable backgrounds go behind the content. Hoverable/active goes on top.
+   * This way they can stack/compound. Both will overlap the parent's borders!
+   * So borders will be automatically adjusted both on toggle, and hover/active,
+   * and they will be compounded.
+   */
+  .toggle-elevate::before,
+  .toggle-elevate-2::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: -1;
+    /* sits behind content but above backdrop */
+  }
+
+  .toggle-elevate.toggle-elevated::before {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.toggle-elevate::before {
+    inset: -1px;
+  }
+
+  /* Does not work on elements with overflow:hidden! */
+  .hover-elevate:not(.no-default-hover-elevate),
+  .active-elevate:not(.no-default-active-elevate),
+  .hover-elevate-2:not(.no-default-hover-elevate),
+  .active-elevate-2:not(.no-default-active-elevate) {
+    position: relative;
+    z-index: 0;
+  }
+
+  .hover-elevate:not(.no-default-hover-elevate)::after,
+  .active-elevate:not(.no-default-active-elevate)::after,
+  .hover-elevate-2:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:not(.no-default-active-elevate)::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0px;
+    /*border-radius: inherit;   match rounded corners */
+    border-radius: inherit;
+    z-index: 999;
+    /* sits in front of content */
+  }
+
+  .hover-elevate:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-1);
+  }
+
+  .hover-elevate-2:hover:not(.no-default-hover-elevate)::after,
+  .active-elevate-2:active:not(.no-default-active-elevate)::after {
+    background-color: var(--elevate-2);
+  }
+
+  /* If there's a 1px border, adjust the inset so that it covers that parent's border */
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate-2:not(.no-hover-interaction-elevate)::after,
+  .border.active-elevate-2:not(.no-active-interaction-elevate)::after,
+  .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
+    inset: -1px;
+  }
+}
+
+#print-portal {
+  display: none;
+}
+
+/* =====================================================================
+   PRINT STYLES — Thermal Receipt & Barcode Labels
+   ===================================================================== */
+@media print {
+  /*
+   * The app shell hiding (body > *:not(#print-portal)) and the @page sizing
+   * are injected by ThermalReceipt/BarcodeLabelPrintModal components dynamically.
+   * This keeps the CSS in sync with the component's paper size settings.
+   *
+   * For barcode-only printing (no ThermalReceipt on page), we keep a fallback:
+   */
+  #print-portal {
+    display: block !important;
+    position: static !important;
+    background: white !important;
+  }
+
+  /* ── Thermal Receipt ── */
+  .receipt-print-root {
+    display: block !important;
+    /*
+     * Width is fixed to 80mm — the printable area of the Epson TM-T20II.
+     * margin: 0 (not 'auto') because the @page is also 80mm wide, so there
+     * is no extra space to center within. Using 'auto' on same-width page
+     * causes a 1px rounding discrepancy in some Chromium versions.
+     */
+    width: 80mm;
+    max-width: 80mm;
+    margin: 0;
+    padding: 3mm 5mm;
+    background: white;
+    color: black;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 9pt;
+    line-height: 1.4;
+    box-sizing: border-box;
+  }
+  .receipt-print-root.size-58mm { width: 58mm; max-width: 58mm; font-size: 8pt; }
+  .receipt-print-root .receipt-logo { display: block; max-width: 30mm; max-height: 20mm; margin: 0 auto 2mm; object-fit: contain; }
+  /* Increased from 12pt → 15pt for prominence; letter-spacing adds retail-brand feel */
+  .receipt-print-root .receipt-store-name { font-size: 15pt; font-weight: bold; text-align: center; margin-bottom: 2mm; letter-spacing: 0.3pt; }
+  .receipt-print-root .receipt-divider { border: none; border-top: 1px dashed black; margin: 2mm 0; }
+  .receipt-print-root .receipt-divider-solid { border: none; border-top: 1px solid black; margin: 2mm 0; }
+  .receipt-print-root .receipt-row { display: flex; justify-content: space-between; gap: 2mm; }
+  .receipt-print-root .receipt-items-table { width: 100%; border-collapse: collapse; font-size: 8pt; }
+  .receipt-print-root .receipt-items-table th { text-align: right; border-bottom: 1px solid black; padding: 0.5mm 0; font-weight: bold; }
+  .receipt-print-root .receipt-items-table td { padding: 0.5mm 0; vertical-align: top; }
+  .receipt-print-root .receipt-total-row { font-size: 11pt; font-weight: bold; }
+  .receipt-print-root .receipt-center { text-align: center; }
+  /* barcode SVG: block, full width, fixed height so JsBarcode renders correctly */
+  .receipt-print-root .receipt-barcode { display: block; width: 100%; height: 15mm; margin: 2mm auto; }
+
+
+
+  /* ── Barcode Labels ── */
+  .barcode-label-print-root { display: block !important; padding: 0; margin: 0; }
+  .barcode-label-page { display: block; padding: 0; margin: 0; }
+  .barcode-label {
+    /*
+     * width/height are set inline (exact mm) by the component.
+     * box-sizing: border-box ensures padding does not expand beyond label dims.
+     */
+    box-sizing: border-box;
+    border: none !important;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+    overflow: hidden;
+    background: white;
+    page-break-after: always;
+    break-after: page;
+  }
+  .barcode-label:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+  /* Product name — bold, centered, clamped to 2 lines */
+  .barcode-label .label-product-name {
+    font-weight: bold;
+    text-align: center;
+    line-height: 1.2;
+    max-height: 2.4em;
+    overflow: hidden;
+    width: 100%;
+  }
+  /* Store name — subtle line above product name */
+  .barcode-label .label-store-name {
+    text-align: center;
+    line-height: 1.1;
+    opacity: 0.7;
+    width: 100%;
+    overflow: hidden;
+    max-height: 1.3em;
+  }
+  /* Barcode SVG fills full label width */
+  .barcode-label .label-barcode-svg {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  /* Barcode number in monospace for readability */
+  .barcode-label .label-sku {
+    text-align: center;
+    letter-spacing: 0.5pt;
+    font-family: monospace;
+  }
+  /* Price — the most important info; slightly larger */
+  .barcode-label .label-price {
+    font-weight: bold;
+    text-align: center;
+  }
+}
+
+/* ==========================================================================
+   LOGIN PAGE
+   Styles for login screen: layout, brand, form card, autocomplete dropdown.
+   Supports RTL (Arabic) and dark mode.
+   ========================================================================== */
+
+@layer components {
+  /* ── Layout ── */
+  .login-root {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
+    padding: 1rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Animated background orbs */
+  .login-bg-orb {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: login-orb-float 8s ease-in-out infinite alternate;
+  }
+  .login-bg-orb--1 {
+    width: 480px;
+    height: 480px;
+    top: -120px;
+    right: -120px;
+    background: radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%);
+    animation-duration: 9s;
+  }
+  .login-bg-orb--2 {
+    width: 360px;
+    height: 360px;
+    bottom: -80px;
+    left: -80px;
+    background: radial-gradient(circle, rgba(59,130,246,0.08) 0%, transparent 70%);
+    animation-duration: 11s;
+    animation-delay: -3s;
+  }
+  @keyframes login-orb-float {
+    from { transform: translate(0, 0) scale(1); }
+    to   { transform: translate(24px, -24px) scale(1.06); }
+  }
+
+  /* ── Card wrapper ── */
+  .login-card-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    z-index: 1;
+  }
+
+  /* ── Brand / Logo ── */
+  .login-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 0.5rem;
+  }
+  .login-logo {
+    width: 64px;
+    height: 64px;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 32px rgba(245,158,11,0.35);
+    margin-bottom: 0.25rem;
+  }
+  .login-logo-icon { color: #0f172a; }
+  .login-title {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #f8fafc;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .login-subtitle {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  /* ── Form card ── */
+  .login-form {
+    background: rgba(255,255,255,0.97);
+    backdrop-filter: blur(16px);
+    border-radius: 24px;
+    box-shadow:
+      0 4px 6px rgba(0,0,0,0.04),
+      0 20px 60px rgba(0,0,0,0.25),
+      0 0 0 1px rgba(255,255,255,0.15);
+    padding: 2.25rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+
+  /* ── Fields ── */
+  .login-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .login-label {
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #334155;
+    user-select: none;
+  }
+
+  /* Shared input style */
+  .login-input {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border-radius: 12px;
+    border: 1.5px solid #e2e8f0;
+    font-size: 0.9375rem;
+    color: #0f172a;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    box-sizing: border-box;
+  }
+  .login-input:focus {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245,158,11,0.18);
+  }
+  .login-input::placeholder { color: #94a3b8; }
+
+  /* ── Autocomplete dropdown ── */
+  .login-autocomplete-dropdown {
+    position: absolute;
+    inset-inline-start: 0;
+    inset-inline-end: 0;
+    top: calc(100% + 6px);
+    background: #fff;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.06);
+    z-index: 50;
+    overflow: hidden;
+    list-style: none;
+    margin: 0;
+    padding: 6px;
+    max-height: 300px;
+    overflow-y: auto;
+  }
+  .login-autocomplete-status {
+    padding: 0.6rem 0.75rem;
+    font-size: 0.8125rem;
+    color: #94a3b8;
+  }
+  .login-autocomplete-empty { text-align: center; }
+  .login-autocomplete-item {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.12s;
+    user-select: none;
+  }
+  .login-autocomplete-item:hover,
+  .login-autocomplete-item--active { background: #fef3c7; }
+  .login-autocomplete-avatar {
+    flex-shrink: 0;
+    width: 30px;
+    height: 30px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #0f172a;
+  }
+  .login-autocomplete-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+  .login-autocomplete-fullname {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f172a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .login-autocomplete-username {
+    font-size: 0.75rem;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── Password field ── */
+  .login-password-wrapper { position: relative; }
+  .login-password-wrapper .login-input { padding-inline-end: 2.75rem; }
+  .login-password-toggle {
+    position: absolute;
+    inset-inline-end: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    padding: 0.25rem;
+    color: #94a3b8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s;
+    border-radius: 6px;
+  }
+  .login-password-toggle:hover { color: #475569; }
+  .login-password-hint {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    margin: 0;
+  }
+
+  /* ── Error ── */
+  .login-error {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    animation: login-shake 0.35s ease;
+  }
+  @keyframes login-shake {
+    0%  { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+    100%{ transform: translateX(0); }
+  }
+
+  /* ── Submit button ── */
+  .login-submit {
+    width: 100%;
+    padding: 0.85rem;
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: #0f172a;
+    border: none;
+    border-radius: 14px;
+    font-size: 0.9375rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    box-shadow: 0 4px 16px rgba(245,158,11,0.35);
+    transition: filter 0.18s, transform 0.12s, box-shadow 0.18s;
+  }
+  .login-submit:hover:not(:disabled) {
+    filter: brightness(1.08);
+    box-shadow: 0 6px 24px rgba(245,158,11,0.45);
+  }
+  .login-submit:active:not(:disabled) { transform: scale(0.985); }
+  .login-submit:disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
+  }
+
+  /* ── Dark mode overrides ── */
+  @media (prefers-color-scheme: dark) {
+    .login-form {
+      background: rgba(30,41,59,0.97);
+      box-shadow:
+        0 4px 6px rgba(0,0,0,0.2),
+        0 20px 60px rgba(0,0,0,0.5),
+        0 0 0 1px rgba(255,255,255,0.06);
+    }
+    .login-label { color: #cbd5e1; }
+    .login-input {
+      background: #1e293b;
+      color: #f1f5f9;
+      border-color: #334155;
+    }
+    .login-input:focus {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 3px rgba(245,158,11,0.2);
+    }
+    .login-autocomplete-dropdown {
+      background: #1e293b;
+      border-color: #334155;
+    }
+    .login-autocomplete-status { color: #64748b; }
+    .login-autocomplete-fullname { color: #f1f5f9; }
+    .login-autocomplete-username { color: #94a3b8; }
+    .login-autocomplete-item:hover,
+    .login-autocomplete-item--active { background: rgba(245,158,11,0.12); }
+    .login-password-hint { color: #64748b; }
+    .login-error {
+      background: rgba(185,28,28,0.15);
+      border-color: rgba(185,28,28,0.4);
+      color: #fca5a5;
+    }
+    .login-password-toggle { color: #64748b; }
+    .login-password-toggle:hover { color: #94a3b8; }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "erp-license-generator",
+  "version": "1.0.0",
+  "description": "Standalone offline License Generator for the Shoe Store ERP system",
+  "private": true,
+  "main": "src/generate-license.js",
+  "scripts": {
+    "generate": "node src/generate-license.js",
+    "help": "node src/generate-license.js --help"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

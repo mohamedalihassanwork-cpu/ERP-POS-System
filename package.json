@@ -1,0 +1,35 @@
+{
+  "name": "workspace",
+  "version": "0.0.0",
+  "license": "MIT",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "build": "pnpm run typecheck && pnpm -r --if-present run build",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "desktop:dev": "pnpm --filter @workspace/desktop run dev",
+    "desktop:build": "pnpm --filter @workspace/desktop run build",
+    "desktop:dist": "pnpm --filter @workspace/desktop run dist"
+  },
+  "private": true,
+  "devDependencies": {
+    "@esbuild/win32-x64": "0.27.3",
+    "@rollup/rollup-win32-x64-msvc": "^4.62.2",
+    "@tailwindcss/oxide-win32-x64-msvc": "^4.3.1",
+    "lightningcss-win32-x64-msvc": "^1.32.0",
+    "prettier": "^3.8.4",
+    "typescript": "~5.9.3"
+  },
+  "pnpm": {
+    "approvedBuilds": [
+      "better-sqlite3",
+      "esbuild",
+      "@swc/core",
+      "msw",
+      "unrs-resolver"
+    ]
+  },
+  "dependencies": {
+    "@libsql/win32-x64-msvc": "^0.5.29"
+  }
+}

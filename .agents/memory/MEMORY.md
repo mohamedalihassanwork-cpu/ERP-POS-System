@@ -1,0 +1,4 @@
+- [Orval query invalidation](orval-query-invalidation.md) — generated query keys are path-prefixed (`["/api/users"]`), not operationId; invalidate by path or lists never refetch.
+- [POS Phase 1 decisions](pos-phase1.md) — multi-tenant shoe-retail POS; custom JWT auth, run-once single-store setup, Arabic RTL.
+- [POS Phase 2 inventory](inventory-phase2.md) — cached stock via atomic upsert (race), orval-zod skips `.int()`, enum query filters need narrowed var; transfers/stock-count deferred.
+- [Notification dedupe](notification-dedupe.md) — active-key partial unique index `(userId,dedupeKey) WHERE is_read=false` + onConflictDoNothing; lets alerts re-fire after read, blocks concurrent dupes.

@@ -1,0 +1,85 @@
+---
+# electron-builder configuration for Shoe Store POS Desktop App
+# Docs: https://www.electron.build/configuration/configuration
+
+appId: com.shoestorepos.app
+productName: "نظام نقاط البيع"
+copyright: "Shoe Store POS"
+
+# Source directory (artifacts/desktop/ — this file's location)
+# All paths below are relative to the project root (set via --project in build-all.mjs)
+
+# Files to include in the packaged app
+files:
+  # Electron main process files
+  - main.js
+  - preload.js
+  # Multi-window manager modules
+  - "managers/**/*"
+  # App icon assets
+  - "assets/**/*"
+  # Offline licensing system (public key + validation only; no private key)
+  - "licensing/**/*"
+  # Exclude the license generator tool — it must NEVER be bundled
+  - "!licensing/tools/**/*"
+
+# Extra resources copied outside the asar bundle so Node.js can require() them
+extraResources:
+  # The Express API server bundle (needs to be a real file path, not inside asar)
+  - from: "../api-server/dist"
+    to: "api-server/dist"
+    filter:
+      - "**/*"
+
+# The built Vite frontend is served by Express via express.static().
+# It needs to be inside the api-server/dist directory structure.
+# The build-all.mjs script handles copying pos/dist/public → api-server/dist/pos-dist.
+
+# Packaging settings
+asar: true
+compression: "maximum"
+
+# Output directory (relative to workspace root)
+directories:
+  output: "dist/desktop"
+  buildResources: "assets"
+
+# ─── Windows ────────────────────────────────────────────────────────────────
+win:
+  target:
+    - target: nsis
+      arch: x64
+    - target: portable
+      arch: x64
+  # App icon (.ico for Windows)
+  icon: "assets/icon.png"
+  # Timestamp server for code signing (if certificate is available)
+  # signingHashAlgorithms:
+  #   - sha256
+  # certificateFile: "${env.CSC_LINK}"
+  # certificatePassword: "${env.CSC_KEY_PASSWORD}"
+
+# ─── NSIS Installer ─────────────────────────────────────────────────────────
+nsis:
+  # Allow user to choose install directory
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  # Create a desktop shortcut
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  # Arabic language support in installer
+  # 1025 = Arabic (Saudi Arabia), 3073 = Arabic (Egypt)
+  language: "3073"
+  # Installer display name
+  # License
+  # licenseFile: "LICENSE.txt"
+  # Run the app after installation
+  runAfterFinish: true
+
+# ─── Auto-update ─────────────────────────────────────────────────────────────
+publish:
+  provider: generic
+  # Replace with your actual update server URL:
+  url: "https://updates.yourdomain.com/shoestore-pos/"
+  # Channel: stable | beta
+  channel: "latest"

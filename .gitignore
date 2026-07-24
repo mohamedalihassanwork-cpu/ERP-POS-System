@@ -1,0 +1,92 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# Log files (never commit logs)
+*.log
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+
+# ── Licensing Security ──────────────────────────────────────────────────────
+# CRITICAL: Never commit the private key or any generated license files.
+# The private key must be stored separately and securely by the vendor.
+
+# Private key files — MUST NEVER be committed
+private.pem
+*.pem
+private-key.*
+
+# Generated license files — customer-specific, never store in repo
+license.dat
+license-generator/output/
+
+# License generator tool directory — keep out of ERP builds
+# (already excluded via electron-builder.yml !licensing/tools/**/* rule)
+artifacts/desktop/licensing/tools/
+
+# ── SQLite Runtime Database Files ──────────────────────────────────────────
+# These files are created at runtime by the dev server or drizzle-kit.
+# They must NEVER be committed — each developer/environment has their own.
+#
+# Which files are excluded:
+#   /sqlite.db                          ← root-level orphan (accidentally created by drizzle-kit run from repo root)
+#   /lib/db/sqlite.db                   ← drizzle-kit used to write here; now redirected by lib/db/.env
+#   /artifacts/api-server/sqlite.db     ← canonical web-dev database (created by pnpm run dev)
+#
+# Which file is NOT excluded (intentionally committed):
+#   /artifacts/desktop/assets/seed.db   ← first-install template for desktop app; zero rows; must ship with installer
+#
+/sqlite.db
+/lib/db/sqlite.db
+/artifacts/api-server/sqlite.db
+
+# SQLite WAL and shared-memory journal files (auto-created alongside .db files)
+*.db-wal
+*.db-shm
+
+# Backup files in backups/ directory (runtime artifacts, not source)
+/backups/sqlite_backup_*.db

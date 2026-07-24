@@ -1,0 +1,4868 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Multi-Tenant SaaS POS System API — Phase 1 (Foundation)
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Authentication and setup
+  - name: users
+    description: User management
+  - name: roles
+    description: Roles and permissions
+  - name: audit
+    description: Audit log
+  - name: treasury
+    description: Treasury accounts, sessions and transactions
+  - name: customers
+    description: Customers and their ledgers
+  - name: suppliers
+    description: Suppliers and their ledgers
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /auth/setup-status:
+    get:
+      operationId: getSetupStatus
+      tags: [auth]
+      summary: Whether the setup wizard must run
+      responses:
+        "200":
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+
+  /auth/setup:
+    post:
+      operationId: completeSetup
+      tags: [auth]
+      summary: Run the one-time setup wizard (create store + admin + default roles)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupInput"
+      responses:
+        "201":
+          description: Store created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupResult"
+        "409":
+          description: Setup already completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in with username and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResult"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          description: Account locked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/refresh:
+    post:
+      operationId: refreshSession
+      tags: [auth]
+      summary: Issue a new access token using the refresh cookie
+      responses:
+        "200":
+          description: Refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResult"
+        "401":
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Revoke the current refresh session
+      responses:
+        "204":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getCurrentUser
+      tags: [auth]
+      summary: Current authenticated user with resolved permissions
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUser"
+        "401":
+          description: Not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List users
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Paginated users
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserList"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Username already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Soft-delete a user
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Cannot delete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /users/{id}/reset-password:
+    post:
+      operationId: resetUserPassword
+      tags: [users]
+      summary: Admin password override for a user
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PasswordResetInput"
+      responses:
+        "204":
+          description: Password reset
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /roles:
+    get:
+      operationId: listRoles
+      tags: [roles]
+      summary: List roles
+      responses:
+        "200":
+          description: Roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Role"
+    post:
+      operationId: createRole
+      tags: [roles]
+      summary: Create a role
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Role name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /roles/{id}:
+    get:
+      operationId: getRole
+      tags: [roles]
+      summary: Get a role
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateRole
+      tags: [roles]
+      summary: Update a role
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RoleUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Role"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteRole
+      tags: [roles]
+      summary: Delete a role
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: Cannot delete (system role or role in use)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /permissions:
+    get:
+      operationId: listPermissions
+      tags: [roles]
+      summary: Permission catalog grouped by module
+      responses:
+        "200":
+          description: Permission groups
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PermissionGroup"
+
+  /audit-logs:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      summary: List audit log entries
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: entityType
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated audit logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogList"
+
+  /categories:
+    get:
+      operationId: listCategories
+      tags: [catalog]
+      summary: List categories
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: createCategory
+      tags: [catalog]
+      summary: Create a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /categories/{id}:
+    patch:
+      operationId: updateCategory
+      tags: [catalog]
+      summary: Update a category
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteCategory
+      tags: [catalog]
+      summary: Deactivate a category
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /brands:
+    get:
+      operationId: listBrands
+      tags: [catalog]
+      summary: List brands
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Brands
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Brand"
+    post:
+      operationId: createBrand
+      tags: [catalog]
+      summary: Create a brand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrandInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Brand"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /brands/{id}:
+    patch:
+      operationId: updateBrand
+      tags: [catalog]
+      summary: Update a brand
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrandInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Brand"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteBrand
+      tags: [catalog]
+      summary: Deactivate a brand
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /colors:
+    get:
+      operationId: listColors
+      tags: [catalog]
+      summary: List colors
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Colors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Color"
+    post:
+      operationId: createColor
+      tags: [catalog]
+      summary: Create a color
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ColorInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Color"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /colors/{id}:
+    patch:
+      operationId: updateColor
+      tags: [catalog]
+      summary: Update a color
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ColorInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Color"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteColor
+      tags: [catalog]
+      summary: Deactivate a color
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sizes:
+    get:
+      operationId: listSizes
+      tags: [catalog]
+      summary: List sizes
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Sizes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Size"
+    post:
+      operationId: createSize
+      tags: [catalog]
+      summary: Create a size
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SizeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Size"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /sizes/{id}:
+    patch:
+      operationId: updateSize
+      tags: [catalog]
+      summary: Update a size
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SizeInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Size"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteSize
+      tags: [catalog]
+      summary: Deactivate a size
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List products
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: categoryId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: brandId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Paginated products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductList"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a product (optionally with variants)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /products/search:
+    get:
+      operationId: searchProducts
+      tags: [products]
+      summary: Quick product/variant lookup by name, SKU, or barcode
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          description: Matching products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product with its variants
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Product detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Deactivate a product
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /products/{id}/variants:
+    post:
+      operationId: createVariant
+      tags: [products]
+      summary: Add a variant to a product
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductVariant"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /variants/{id}:
+    patch:
+      operationId: updateVariant
+      tags: [products]
+      summary: Update a variant
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductVariant"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteVariant
+      tags: [products]
+      summary: Deactivate a variant
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /warehouses:
+    get:
+      operationId: listWarehouses
+      tags: [warehouses]
+      summary: List warehouses
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: true }
+      responses:
+        "200":
+          description: Warehouses
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Warehouse"
+    post:
+      operationId: createWarehouse
+      tags: [warehouses]
+      summary: Create a warehouse
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /warehouses/{id}:
+    patch:
+      operationId: updateWarehouse
+      tags: [warehouses]
+      summary: Update a warehouse
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WarehouseInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Warehouse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteWarehouse
+      tags: [warehouses]
+      summary: Deactivate a warehouse
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/stock:
+    get:
+      operationId: listStock
+      tags: [inventory]
+      summary: Current stock per variant per warehouse
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: warehouseId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: lowStockOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Paginated stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockList"
+
+  /inventory/movements:
+    get:
+      operationId: listMovements
+      tags: [inventory]
+      summary: Inventory movement history
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: variantId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: warehouseId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: type
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated movements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MovementList"
+
+  /inventory/adjustments:
+    post:
+      operationId: createAdjustment
+      tags: [inventory]
+      summary: Manually adjust stock (creates movements + syncs quantities)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdjustmentInput"
+      responses:
+        "201":
+          description: Movements created
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryMovement"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /treasury/accounts:
+    get:
+      operationId: listTreasuryAccounts
+      tags: [treasury]
+      summary: List treasury accounts (auto-seeds defaults)
+      responses:
+        "200":
+          description: Accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TreasuryAccount"
+
+  /treasury/transactions:
+    get:
+      operationId: listTreasuryTransactions
+      tags: [treasury]
+      summary: Treasury transaction ledger
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: treasuryAccountId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: direction
+          in: query
+          schema: { type: string }
+        - name: referenceType
+          in: query
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          schema: { type: string }
+        - name: dateTo
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated transactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreasuryTransactionList"
+
+  /treasury/sessions:
+    get:
+      operationId: listTreasurySessions
+      tags: [treasury]
+      summary: Treasury session history
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: treasuryAccountId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreasurySessionList"
+    post:
+      operationId: openTreasurySession
+      tags: [treasury]
+      summary: Open a treasury session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenSessionInput"
+      responses:
+        "201":
+          description: Opened
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreasurySession"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /treasury/sessions/current:
+    get:
+      operationId: getCurrentTreasurySession
+      tags: [treasury]
+      summary: Current open session for an account
+      parameters:
+        - name: treasuryAccountId
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Current session or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentSessionResponse"
+
+  /treasury/sessions/{id}/close:
+    post:
+      operationId: closeTreasurySession
+      tags: [treasury]
+      summary: Close a treasury session
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloseSessionInput"
+      responses:
+        "200":
+          description: Closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreasurySession"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /customers:
+    get:
+      operationId: listCustomers
+      tags: [customers]
+      summary: List customers
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: false }
+        - name: withDebtOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Paginated customers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerList"
+    post:
+      operationId: createCustomer
+      tags: [customers]
+      summary: Create a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /customers/{id}:
+    get:
+      operationId: getCustomer
+      tags: [customers]
+      summary: Get a customer
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateCustomer
+      tags: [customers]
+      summary: Update a customer
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Customer"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteCustomer
+      tags: [customers]
+      summary: Deactivate a customer
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /customers/{id}/statement:
+    get:
+      operationId: getCustomerStatement
+      tags: [customers]
+      summary: Customer ledger / statement
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerStatement"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /customers/{id}/payments:
+    post:
+      operationId: createCustomerPayment
+      tags: [customers]
+      summary: Record a customer payment (reduces debt)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentInput"
+      responses:
+        "201":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CustomerTransaction"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /suppliers:
+    get:
+      operationId: listSuppliers
+      tags: [suppliers]
+      summary: List suppliers
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: false }
+        - name: withDebtOnly
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Paginated suppliers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierList"
+    post:
+      operationId: createSupplier
+      tags: [suppliers]
+      summary: Create a supplier
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupplierInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /suppliers/{id}:
+    get:
+      operationId: getSupplier
+      tags: [suppliers]
+      summary: Get a supplier
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Supplier
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateSupplier
+      tags: [suppliers]
+      summary: Update a supplier
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SupplierInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Supplier"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteSupplier
+      tags: [suppliers]
+      summary: Deactivate a supplier
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /suppliers/{id}/statement:
+    get:
+      operationId: getSupplierStatement
+      tags: [suppliers]
+      summary: Supplier ledger / statement
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Statement
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierStatement"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /suppliers/{id}/payments:
+    post:
+      operationId: createSupplierPayment
+      tags: [suppliers]
+      summary: Record a supplier payment (reduces payable)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaymentInput"
+      responses:
+        "201":
+          description: Payment recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SupplierTransaction"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sales/invoices:
+    get:
+      operationId: listInvoices
+      tags: [sales]
+      summary: Sales history (paginated, filterable)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: paymentStatus
+          in: query
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          schema: { type: string }
+        - name: dateTo
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated invoices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceList"
+    post:
+      operationId: createSale
+      tags: [sales]
+      summary: Create a sale (atomic invoice + inventory + treasury + accounting)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSaleInput"
+      responses:
+        "201":
+          description: Sale completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /sales/invoices/lookup:
+    get:
+      operationId: lookupInvoice
+      tags: [sales]
+      summary: Find an invoice by number or barcode (for returns)
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invoice detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sales/invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [sales]
+      summary: Invoice detail (items + payments)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Invoice detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sales/returns:
+    get:
+      operationId: listSalesReturns
+      tags: [sales]
+      summary: Sales returns history
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: invoiceId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Paginated returns
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReturnList"
+    post:
+      operationId: createSalesReturn
+      tags: [sales]
+      summary: Create a sales return (reverses inventory + treasury + accounting)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSalesReturnInput"
+      responses:
+        "201":
+          description: Return completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReturnDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /sales/returns/{id}:
+    get:
+      operationId: getSalesReturn
+      tags: [sales]
+      summary: Sales return detail
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Return detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesReturnDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /suspended-orders:
+    get:
+      operationId: listSuspendedOrders
+      tags: [sales]
+      summary: List suspended (parked) orders
+      responses:
+        "200":
+          description: Suspended orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SuspendedOrder"
+    post:
+      operationId: createSuspendedOrder
+      tags: [sales]
+      summary: Park a cart as a suspended order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SuspendedOrderInput"
+      responses:
+        "201":
+          description: Suspended
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuspendedOrder"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /suspended-orders/{id}:
+    delete:
+      operationId: deleteSuspendedOrder
+      tags: [sales]
+      summary: Delete a suspended order
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /purchases/invoices:
+    get:
+      operationId: listPurchases
+      tags: [purchases]
+      summary: Purchase history (paginated, filterable)
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: supplierId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: dateFrom
+          in: query
+          schema: { type: string }
+        - name: dateTo
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Paginated purchases
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseList"
+    post:
+      operationId: createPurchase
+      tags: [purchases]
+      summary: Create a purchase (atomic invoice + inventory + treasury + accounting)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseInput"
+      responses:
+        "201":
+          description: Purchase completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /purchases/invoices/{id}:
+    get:
+      operationId: getPurchase
+      tags: [purchases]
+      summary: Purchase detail (items + payments)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Purchase detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /purchases/returns:
+    get:
+      operationId: listPurchaseReturns
+      tags: [purchases]
+      summary: Purchase returns history
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: purchaseId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Paginated returns
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseReturnList"
+    post:
+      operationId: createPurchaseReturn
+      tags: [purchases]
+      summary: Create a purchase return (reverses inventory + treasury + accounting)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePurchaseReturnInput"
+      responses:
+        "201":
+          description: Return completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseReturnDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /purchases/returns/{id}:
+    get:
+      operationId: getPurchaseReturn
+      tags: [purchases]
+      summary: Purchase return detail
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Return detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchaseReturnDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /finance/expense-categories:
+    get:
+      operationId: listExpenseCategories
+      tags: [finance]
+      summary: List expense categories
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ExpenseCategory" }
+    post:
+      operationId: createExpenseCategory
+      tags: [finance]
+      summary: Create expense category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseCategoryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseCategory"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /finance/expense-categories/{id}:
+    patch:
+      operationId: updateExpenseCategory
+      tags: [finance]
+      summary: Update expense category
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExpenseCategoryUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseCategory"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteExpenseCategory
+      tags: [finance]
+      summary: Deactivate expense category
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /finance/expenses:
+    get:
+      operationId: listExpenses
+      tags: [finance]
+      summary: List expenses
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: categoryId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Paginated expenses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseList"
+    post:
+      operationId: createExpense
+      tags: [finance]
+      summary: Record an expense (treasury OUT + journal)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateExpenseInput"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Expense"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /finance/employees:
+    get:
+      operationId: listEmployees
+      tags: [finance]
+      summary: List employees
+      parameters:
+        - name: includeInactive
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Employees
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Employee" }
+    post:
+      operationId: createEmployee
+      tags: [finance]
+      summary: Create employee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /finance/employees/{id}:
+    patch:
+      operationId: updateEmployee
+      tags: [finance]
+      summary: Update employee
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: deleteEmployee
+      tags: [finance]
+      summary: Deactivate employee
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "204":
+          description: Deactivated
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /finance/advances:
+    get:
+      operationId: listAdvances
+      tags: [finance]
+      summary: List employee advances
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Paginated advances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdvanceList"
+    post:
+      operationId: createAdvance
+      tags: [finance]
+      summary: Give an employee advance (treasury OUT + journal)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdvanceInput"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeAdvance"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /finance/salaries:
+    get:
+      operationId: listSalaries
+      tags: [finance]
+      summary: List salary records
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: employeeId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: periodMonth
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, PAID] }
+      responses:
+        "200":
+          description: Paginated salary records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalaryList"
+    post:
+      operationId: createSalary
+      tags: [finance]
+      summary: Create a salary record (accrue expense + payable)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSalaryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalaryRecord"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /finance/salaries/{id}/pay:
+    post:
+      operationId: paySalary
+      tags: [finance]
+      summary: Pay a salary record (treasury OUT + clear payable)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PaySalaryInput"
+      responses:
+        "200":
+          description: Paid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalaryRecord"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /finance/equity-movements:
+    get:
+      operationId: listEquityMovements
+      tags: [finance]
+      summary: List owner withdrawals/deposits
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: type
+          in: query
+          schema: { type: string, enum: [WITHDRAWAL, DEPOSIT] }
+      responses:
+        "200":
+          description: Paginated equity movements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquityMovementList"
+    post:
+      operationId: createEquityMovement
+      tags: [finance]
+      summary: Owner withdrawal or capital deposit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEquityMovementInput"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EquityMovement"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /dashboard/kpis:
+    get:
+      operationId: getDashboardKpis
+      tags: [dashboard]
+      summary: Real-time dashboard KPI cards
+      responses:
+        "200":
+          description: KPI snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardKpis"
+
+  /dashboard/charts:
+    get:
+      operationId: getDashboardCharts
+      tags: [dashboard]
+      summary: Dashboard chart datasets
+      responses:
+        "200":
+          description: Chart datasets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardCharts"
+
+  /reports/sales-summary:
+    get:
+      operationId: getSalesSummaryReport
+      tags: [reports]
+      summary: Sales summary report
+      parameters:
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: paymentMethod
+          in: query
+          schema: { type: string, enum: [CASH, CARD, INSTAPAY, WALLET, CREDIT] }
+      responses:
+        "200":
+          description: Sales summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SalesSummaryReport"
+
+  /reports/purchases-summary:
+    get:
+      operationId: getPurchasesSummaryReport
+      tags: [reports]
+      summary: Purchases summary report
+      parameters:
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+        - name: supplierId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Purchases summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PurchasesSummaryReport"
+
+  /reports/inventory-stock:
+    get:
+      operationId: getInventoryStockReport
+      tags: [reports]
+      summary: Inventory stock valuation report
+      parameters:
+        - name: warehouseId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: categoryId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: brandId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Inventory stock
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryStockReport"
+
+  /reports/low-stock:
+    get:
+      operationId: getLowStockReport
+      tags: [reports]
+      summary: Low stock alert report
+      parameters:
+        - name: warehouseId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Low stock items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LowStockReport"
+
+  /reports/profit-loss:
+    get:
+      operationId: getProfitLossReport
+      tags: [reports]
+      summary: Profit & loss statement
+      parameters:
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: P&L
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProfitLossReport"
+
+  /reports/treasury:
+    get:
+      operationId: getTreasuryReport
+      tags: [reports]
+      summary: Treasury movements report
+      parameters:
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+        - name: accountId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Treasury movements
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TreasuryReport"
+
+  /reports/expenses:
+    get:
+      operationId: getExpenseReport
+      tags: [reports]
+      summary: Expense report
+      parameters:
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+        - name: categoryId
+          in: query
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Expenses
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExpenseReport"
+
+  /reports/top-products:
+    get:
+      operationId: getTopProductsReport
+      tags: [reports]
+      summary: Top selling products report
+      parameters:
+        - name: fromDate
+          in: query
+          schema: { type: string, format: date }
+        - name: toDate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Top products
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TopProductsReport"
+
+  /settings:
+    get:
+      operationId: getStoreSettings
+      tags: [settings]
+      summary: Get store settings
+      responses:
+        "200":
+          description: Store settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreSettings"
+    patch:
+      operationId: updateStoreSettings
+      tags: [settings]
+      summary: Update store settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStoreSettingsInput"
+      responses:
+        "200":
+          description: Updated store settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StoreSettings"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /settings/sequences:
+    get:
+      operationId: listNumberSequences
+      tags: [settings]
+      summary: List document number sequences
+      responses:
+        "200":
+          description: Number sequences
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/NumberSequence" }
+
+  /settings/sequences/{kind}:
+    patch:
+      operationId: updateNumberSequence
+      tags: [settings]
+      summary: Update a document number sequence prefix/padding
+      parameters:
+        - name: kind
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateNumberSequenceInput"
+      responses:
+        "200":
+          description: Updated sequence
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NumberSequence"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /notifications:
+    get:
+      operationId: listNotifications
+      tags: [notifications]
+      summary: List notifications for the current user
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationList"
+
+  /notifications/unread-count:
+    get:
+      operationId: getUnreadNotificationCount
+      tags: [notifications]
+      summary: Unread notification count for the current user
+      responses:
+        "200":
+          description: Unread count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+
+  /notifications/refresh:
+    post:
+      operationId: refreshNotifications
+      tags: [notifications]
+      summary: Recompute alert notifications (low stock, debts, negative treasury)
+      responses:
+        "200":
+          description: Refreshed unread count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+
+  /notifications/read-all:
+    post:
+      operationId: markAllNotificationsRead
+      tags: [notifications]
+      summary: Mark all notifications as read
+      responses:
+        "200":
+          description: Updated unread count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UnreadCount"
+
+  /notifications/{id}/read:
+    post:
+      operationId: markNotificationRead
+      tags: [notifications]
+      summary: Mark a notification as read
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Notification"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/transfers:
+    get:
+      operationId: listTransfers
+      tags: [transfers]
+      summary: List warehouse transfers
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, COMPLETED, CANCELLED] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Transfers
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferList"
+    post:
+      operationId: createTransfer
+      tags: [transfers]
+      summary: Create a warehouse transfer (books TRANSFER_OUT from source)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTransferInput"
+      responses:
+        "201":
+          description: Created transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/transfers/{id}:
+    get:
+      operationId: getTransfer
+      tags: [transfers]
+      summary: Get a transfer with its items
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Transfer detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/transfers/{id}/complete:
+    post:
+      operationId: completeTransfer
+      tags: [transfers]
+      summary: Confirm receipt of a transfer (books TRANSFER_IN to destination)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Completed transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/transfers/{id}/cancel:
+    post:
+      operationId: cancelTransfer
+      tags: [transfers]
+      summary: Cancel a pending transfer (reverses TRANSFER_OUT)
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Cancelled transfer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransferDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/stock-counts:
+    get:
+      operationId: listStockCounts
+      tags: [stock-counts]
+      summary: List stock-count sessions
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [OPEN, COMPLETED, CANCELLED] }
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: pageSize
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Stock counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockCountList"
+    post:
+      operationId: createStockCount
+      tags: [stock-counts]
+      summary: Open a stock-count session (snapshots expected quantities)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockCountInput"
+      responses:
+        "201":
+          description: Created stock count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockCountDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/stock-counts/{id}:
+    get:
+      operationId: getStockCount
+      tags: [stock-counts]
+      summary: Get a stock count with its items
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Stock count detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockCountDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/stock-counts/{id}/items:
+    patch:
+      operationId: updateStockCountItems
+      tags: [stock-counts]
+      summary: Record counted quantities for a stock count
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStockCountItemsInput"
+      responses:
+        "200":
+          description: Updated stock count detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockCountDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/stock-counts/{id}/complete:
+    post:
+      operationId: completeStockCount
+      tags: [stock-counts]
+      summary: Apply counted quantities as STOCK_COUNT_CORRECTION movements
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Completed stock count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockCountDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /inventory/stock-counts/{id}/cancel:
+    post:
+      operationId: cancelStockCount
+      tags: [stock-counts]
+      summary: Cancel an open stock count
+      parameters:
+        - $ref: "#/components/parameters/IdParam"
+      responses:
+        "200":
+          description: Cancelled stock count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StockCountDetail"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  parameters:
+    IdParam:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    SetupStatus:
+      type: object
+      properties:
+        storeExists:
+          type: boolean
+        isSetupComplete:
+          type: boolean
+      required:
+        - storeExists
+        - isSetupComplete
+
+    SetupInput:
+      type: object
+      required:
+        - storeName
+        - printerWidth
+        - adminFullName
+        - adminUsername
+        - adminPassword
+      properties:
+        storeName:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        currency:
+          type: string
+          default: EGP
+        taxRate:
+          type: number
+          minimum: 0
+          maximum: 100
+          default: 0
+        logoUrl:
+          type: string
+        printerWidth:
+          type: string
+          enum: ["58mm", "80mm"]
+        paperType:
+          type: string
+        adminFullName:
+          type: string
+          minLength: 1
+        adminUsername:
+          type: string
+          minLength: 3
+        adminPassword:
+          type: string
+          minLength: 4
+
+    SetupResult:
+      type: object
+      properties:
+        storeId:
+          type: string
+          format: uuid
+        message:
+          type: string
+      required:
+        - storeId
+        - message
+
+    LoginInput:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          minLength: 1
+        password:
+          type: string
+          minLength: 1
+
+    RoleRef:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        nameAr:
+          type: ["string", "null"]
+      required:
+        - id
+        - name
+
+    CurrentUser:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        storeId:
+          type: string
+          format: uuid
+        username:
+          type: string
+        fullName:
+          type: string
+        role:
+          $ref: "#/components/schemas/RoleRef"
+        permissions:
+          type: array
+          items:
+            type: string
+        storeName:
+          type: string
+      required:
+        - id
+        - storeId
+        - username
+        - fullName
+        - role
+        - permissions
+        - storeName
+
+    AuthResult:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        user:
+          $ref: "#/components/schemas/CurrentUser"
+      required:
+        - accessToken
+        - user
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        username:
+          type: string
+        fullName:
+          type: string
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        roleId:
+          type: string
+          format: uuid
+        role:
+          $ref: "#/components/schemas/RoleRef"
+        lastLoginAt:
+          type: ["string", "null"]
+          format: date-time
+        lockedUntil:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - username
+        - fullName
+        - isActive
+        - roleId
+        - role
+        - createdAt
+
+    UserInput:
+      type: object
+      required:
+        - username
+        - password
+        - fullName
+        - roleId
+      properties:
+        username:
+          type: string
+          minLength: 3
+        password:
+          type: string
+          minLength: 4
+        fullName:
+          type: string
+          minLength: 1
+        roleId:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        email:
+          type: string
+        isActive:
+          type: boolean
+          default: true
+
+    UserUpdate:
+      type: object
+      properties:
+        fullName:
+          type: string
+          minLength: 1
+        roleId:
+          type: string
+          format: uuid
+        phone:
+          type: ["string", "null"]
+        email:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+
+    PasswordResetInput:
+      type: object
+      required:
+        - newPassword
+      properties:
+        newPassword:
+          type: string
+          minLength: 4
+
+    Role:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        nameAr:
+          type: ["string", "null"]
+        permissions:
+          type: array
+          items:
+            type: string
+        isSystem:
+          type: boolean
+        userCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - permissions
+        - isSystem
+        - userCount
+        - createdAt
+
+    RoleInput:
+      type: object
+      required:
+        - name
+        - permissions
+      properties:
+        name:
+          type: string
+          minLength: 1
+        nameAr:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+
+    RoleUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        nameAr:
+          type: string
+        permissions:
+          type: array
+          items:
+            type: string
+
+    PermissionDef:
+      type: object
+      properties:
+        key:
+          type: string
+        labelAr:
+          type: string
+      required:
+        - key
+        - labelAr
+
+    PermissionGroup:
+      type: object
+      properties:
+        module:
+          type: string
+        labelAr:
+          type: string
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PermissionDef"
+      required:
+        - module
+        - labelAr
+        - permissions
+
+    UserList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/User"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          type: string
+        entityType:
+          type: ["string", "null"]
+        entityId:
+          type: ["string", "null"]
+        userId:
+          type: ["string", "null"]
+          format: uuid
+        userName:
+          type: ["string", "null"]
+        ipAddress:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - action
+        - createdAt
+
+    AuditLogList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        pageSize:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+
+    Category:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nameEn: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, isActive, createdAt]
+
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        nameEn: { type: ["string", "null"] }
+        isActive: { type: boolean }
+
+    Brand:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nameEn: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, isActive, createdAt]
+
+    BrandInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        nameEn: { type: ["string", "null"] }
+        isActive: { type: boolean }
+
+    Color:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nameEn: { type: ["string", "null"] }
+        hex: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, isActive, createdAt]
+
+    ColorInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        nameEn: { type: ["string", "null"] }
+        hex: { type: ["string", "null"] }
+        isActive: { type: boolean }
+
+    Size:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        system: { type: string }
+        sortOrder: { type: integer }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, system, sortOrder, isActive, createdAt]
+
+    SizeInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        system: { type: string }
+        sortOrder: { type: integer }
+        isActive: { type: boolean }
+
+    ProductVariant:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        colorId: { type: string, format: uuid }
+        sizeId: { type: string, format: uuid }
+        colorName: { type: ["string", "null"] }
+        sizeName: { type: ["string", "null"] }
+        sku: { type: string }
+        barcode: { type: string }
+        sellingPrice: { type: ["string", "null"] }
+        costPrice: { type: ["string", "null"] }
+        totalStock: { type: integer }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, productId, colorId, sizeId, sku, barcode, isActive, createdAt]
+
+    VariantInput:
+      type: object
+      required: [colorId, sizeId]
+      properties:
+        colorId: { type: string, format: uuid }
+        sizeId: { type: string, format: uuid }
+        sku: { type: string }
+        barcode: { type: string }
+        sellingPrice: { type: ["number", "null"] }
+        costPrice: { type: ["number", "null"] }
+
+    VariantUpdate:
+      type: object
+      properties:
+        sellingPrice: { type: ["number", "null"] }
+        costPrice: { type: ["number", "null"] }
+        isActive: { type: boolean }
+
+    Product:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        nameEn: { type: ["string", "null"] }
+        categoryId: { type: string, format: uuid }
+        categoryName: { type: ["string", "null"] }
+        brandId: { type: ["string", "null"], format: uuid }
+        brandName: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        basePrice: { type: string }
+        baseCostPrice: { type: string }
+        reorderPoint: { type: integer }
+        barcode: { type: ["string", "null"] }
+        variantCount: { type: integer }
+        totalStock: { type: integer }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, categoryId, basePrice, baseCostPrice, reorderPoint, isActive, createdAt]
+
+    ProductDetail:
+      allOf:
+        - $ref: "#/components/schemas/Product"
+        - type: object
+          properties:
+            variants:
+              type: array
+              items:
+                $ref: "#/components/schemas/ProductVariant"
+          required: [variants]
+
+    OpeningStockEntry:
+      type: object
+      required: [warehouseId, quantity]
+      properties:
+        warehouseId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+
+    VariantSeed:
+      type: object
+      required: [colorId, sizeId]
+      properties:
+        colorId: { type: string, format: uuid }
+        sizeId: { type: string, format: uuid }
+        sellingPrice: { type: ["number", "null"] }
+        costPrice: { type: ["number", "null"] }
+        openingStock:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpeningStockEntry"
+
+    ProductInput:
+      type: object
+      required: [name, categoryId]
+      properties:
+        name: { type: string, minLength: 1 }
+        nameEn: { type: ["string", "null"] }
+        categoryId: { type: string, format: uuid }
+        brandId: { type: ["string", "null"], format: uuid }
+        description: { type: ["string", "null"] }
+        basePrice: { type: number, minimum: 0 }
+        baseCostPrice: { type: number, minimum: 0 }
+        reorderPoint: { type: integer, minimum: 0 }
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/VariantSeed"
+
+    ProductUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        nameEn: { type: ["string", "null"] }
+        categoryId: { type: string, format: uuid }
+        brandId: { type: ["string", "null"], format: uuid }
+        description: { type: ["string", "null"] }
+        basePrice: { type: number, minimum: 0 }
+        baseCostPrice: { type: number, minimum: 0 }
+        reorderPoint: { type: integer, minimum: 0 }
+        isActive: { type: boolean }
+
+    ProductList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Product"
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+      required: [items, total, page, pageSize]
+
+    Warehouse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        code: { type: ["string", "null"] }
+        address: { type: ["string", "null"] }
+        isDefault: { type: boolean }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+      required: [id, name, isDefault, isActive, createdAt]
+
+    WarehouseInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        code: { type: ["string", "null"] }
+        address: { type: ["string", "null"] }
+        isDefault: { type: boolean }
+        isActive: { type: boolean }
+
+    StockItem:
+      type: object
+      properties:
+        variantId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        productName: { type: string }
+        sku: { type: string }
+        barcode: { type: string }
+        colorName: { type: ["string", "null"] }
+        sizeName: { type: ["string", "null"] }
+        warehouseId: { type: string, format: uuid }
+        warehouseName: { type: string }
+        quantity: { type: integer }
+        reorderPoint: { type: integer }
+      required: [variantId, productId, productName, sku, barcode, warehouseId, warehouseName, quantity, reorderPoint]
+
+    StockList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/StockItem"
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+      required: [items, total, page, pageSize]
+
+    InventoryMovement:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        sku: { type: ["string", "null"] }
+        productName: { type: ["string", "null"] }
+        warehouseId: { type: string, format: uuid }
+        warehouseName: { type: ["string", "null"] }
+        type: { type: string }
+        quantityChange: { type: integer }
+        balanceAfter: { type: integer }
+        referenceType: { type: ["string", "null"] }
+        referenceId: { type: ["string", "null"], format: uuid }
+        notes: { type: ["string", "null"] }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+      required: [id, variantId, warehouseId, type, quantityChange, balanceAfter, createdAt]
+
+    MovementList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryMovement"
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+      required: [items, total, page, pageSize]
+
+    AdjustmentLine:
+      type: object
+      required: [variantId, type, quantity]
+      properties:
+        variantId: { type: string, format: uuid }
+        type: { type: string, enum: [ADJUSTMENT_IN, ADJUSTMENT_OUT] }
+        quantity: { type: integer, minimum: 1 }
+        notes: { type: ["string", "null"] }
+
+    AdjustmentInput:
+      type: object
+      required: [warehouseId, lines]
+      properties:
+        warehouseId: { type: string, format: uuid }
+        notes: { type: ["string", "null"] }
+        lines:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AdjustmentLine"
+
+    TreasuryAccount:
+      type: object
+      required: [id, type, name, balance, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        name: { type: string }
+        balance: { type: string }
+        isActive: { type: boolean }
+
+    TreasuryTransaction:
+      type: object
+      required: [id, treasuryAccountId, direction, amount, balanceAfter, referenceType, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        treasuryAccountId: { type: string, format: uuid }
+        accountName: { type: ["string", "null"] }
+        sessionId: { type: ["string", "null"] }
+        direction: { type: string }
+        amount: { type: string }
+        balanceAfter: { type: string }
+        referenceType: { type: string }
+        referenceId: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    TreasuryTransactionList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TreasuryTransaction" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    TreasurySession:
+      type: object
+      required: [id, treasuryAccountId, status, openingBalance, openedAt]
+      properties:
+        id: { type: string, format: uuid }
+        treasuryAccountId: { type: string, format: uuid }
+        accountName: { type: ["string", "null"] }
+        status: { type: string }
+        openingBalance: { type: string }
+        expectedClosingBalance: { type: ["string", "null"] }
+        actualClosingBalance: { type: ["string", "null"] }
+        variance: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+        openedByName: { type: ["string", "null"] }
+        closedByName: { type: ["string", "null"] }
+        openedAt: { type: string, format: date-time }
+        closedAt: { type: ["string", "null"] }
+
+    TreasurySessionList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TreasurySession" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    CurrentSessionResponse:
+      type: object
+      required: [session]
+      properties:
+        session:
+          oneOf:
+            - $ref: "#/components/schemas/TreasurySession"
+            - type: "null"
+
+    OpenSessionInput:
+      type: object
+      required: [treasuryAccountId, openingBalance]
+      properties:
+        treasuryAccountId: { type: string, format: uuid }
+        openingBalance: { type: number, minimum: 0 }
+        notes: { type: ["string", "null"] }
+
+    CloseSessionInput:
+      type: object
+      required: [actualClosingBalance]
+      properties:
+        actualClosingBalance: { type: number, minimum: 0 }
+        notes: { type: ["string", "null"] }
+
+    Customer:
+      type: object
+      required: [id, name, phone, creditLimit, currentBalance, isActive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        phone: { type: string }
+        address: { type: ["string", "null"] }
+        creditLimit: { type: string }
+        currentBalance: { type: string }
+        notes: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    CustomerInput:
+      type: object
+      required: [name, phone]
+      properties:
+        name: { type: string, minLength: 1 }
+        phone: { type: string, minLength: 1 }
+        address: { type: ["string", "null"] }
+        creditLimit: { type: number, minimum: 0, default: 0 }
+        notes: { type: ["string", "null"] }
+
+    CustomerList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Customer" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    CustomerTransaction:
+      type: object
+      required: [id, customerId, type, debit, credit, balanceAfter, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        customerId: { type: string, format: uuid }
+        type: { type: string }
+        debit: { type: string }
+        credit: { type: string }
+        balanceAfter: { type: string }
+        referenceType: { type: ["string", "null"] }
+        referenceId: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    CustomerStatement:
+      type: object
+      required: [customer, items, total, page, pageSize]
+      properties:
+        customer: { $ref: "#/components/schemas/Customer" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/CustomerTransaction" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    Supplier:
+      type: object
+      required: [id, name, phone, currentBalance, isActive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        phone: { type: string }
+        address: { type: ["string", "null"] }
+        taxNumber: { type: ["string", "null"] }
+        currentBalance: { type: string }
+        notes: { type: ["string", "null"] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    SupplierInput:
+      type: object
+      required: [name, phone]
+      properties:
+        name: { type: string, minLength: 1 }
+        phone: { type: string, minLength: 1 }
+        address: { type: ["string", "null"] }
+        taxNumber: { type: ["string", "null"] }
+        notes: { type: ["string", "null"] }
+
+    SupplierList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Supplier" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    SupplierTransaction:
+      type: object
+      required: [id, supplierId, type, debit, credit, balanceAfter, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        supplierId: { type: string, format: uuid }
+        type: { type: string }
+        debit: { type: string }
+        credit: { type: string }
+        balanceAfter: { type: string }
+        referenceType: { type: ["string", "null"] }
+        referenceId: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    SupplierStatement:
+      type: object
+      required: [supplier, items, total, page, pageSize]
+      properties:
+        supplier: { $ref: "#/components/schemas/Supplier" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SupplierTransaction" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    PaymentInput:
+      type: object
+      required: [amount, treasuryAccountId]
+      properties:
+        amount: { type: number, minimum: 0 }
+        treasuryAccountId: { type: string, format: uuid }
+        notes: { type: ["string", "null"] }
+
+    SaleItemInput:
+      type: object
+      required: [variantId, quantity, unitPrice]
+      properties:
+        variantId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+        unitPrice: { type: number, minimum: 0 }
+        discountAmount: { type: number, minimum: 0, default: 0 }
+
+    SalePaymentInput:
+      type: object
+      required: [method, amount]
+      properties:
+        method: { type: string, enum: [CASH, CARD, INSTAPAY, WALLET, CREDIT] }
+        amount: { type: number, minimum: 0 }
+        treasuryAccountId: { type: ["string", "null"], format: uuid }
+
+    CreateSaleInput:
+      type: object
+      required: [warehouseId, items, payments]
+      properties:
+        warehouseId: { type: string, format: uuid }
+        customerId: { type: ["string", "null"], format: uuid }
+        discountAmount: { type: number, minimum: 0, default: 0 }
+        taxAmount: { type: number, minimum: 0, default: 0 }
+        notes: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time, description: "Optional custom date for the sale" }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SaleItemInput" }
+        payments:
+          type: array
+          items: { $ref: "#/components/schemas/SalePaymentInput" }
+
+    Invoice:
+      type: object
+      required: [id, invoiceNumber, invoiceBarcode, warehouseId, saleType, subtotal, discountAmount, taxAmount, totalAmount, amountPaid, paymentStatus, returnStatus, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        invoiceNumber: { type: string }
+        invoiceBarcode: { type: string }
+        customerId: { type: ["string", "null"], format: uuid }
+        customerName: { type: ["string", "null"] }
+        warehouseId: { type: string, format: uuid }
+        warehouseName: { type: ["string", "null"] }
+        saleType: { type: string }
+        subtotal: { type: string }
+        discountAmount: { type: string }
+        taxAmount: { type: string }
+        totalAmount: { type: string }
+        totalCost: { type: string }
+        amountPaid: { type: string }
+        changeDue: { type: string }
+        paymentStatus: { type: string }
+        returnStatus: { type: string }
+        notes: { type: ["string", "null"] }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    InvoiceItem:
+      type: object
+      required: [id, variantId, quantity, unitPrice, lineTotal]
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        sku: { type: ["string", "null"] }
+        barcode: { type: ["string", "null"] }
+        productName: { type: ["string", "null"] }
+        colorName: { type: ["string", "null"] }
+        sizeName: { type: ["string", "null"] }
+        quantity: { type: integer }
+        unitPrice: { type: string }
+        unitCost: { type: string }
+        discountAmount: { type: string }
+        lineTotal: { type: string }
+        returnedQuantity: { type: integer }
+
+    InvoicePayment:
+      type: object
+      required: [id, method, amount]
+      properties:
+        id: { type: string, format: uuid }
+        method: { type: string }
+        treasuryAccountId: { type: ["string", "null"], format: uuid }
+        accountName: { type: ["string", "null"] }
+        amount: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    InvoiceDetail:
+      allOf:
+        - $ref: "#/components/schemas/Invoice"
+        - type: object
+          required: [items, payments]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/InvoiceItem" }
+            payments:
+              type: array
+              items: { $ref: "#/components/schemas/InvoicePayment" }
+
+    InvoiceList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Invoice" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    SalesReturnItemInput:
+      type: object
+      required: [invoiceItemId, quantity]
+      properties:
+        invoiceItemId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+
+    CreateSalesReturnInput:
+      type: object
+      required: [invoiceId, items]
+      properties:
+        invoiceId: { type: string, format: uuid }
+        refundMethod: { type: string, enum: [CASH, CARD, INSTAPAY, WALLET, CREDIT], default: CASH }
+        treasuryAccountId: { type: ["string", "null"], format: uuid }
+        reason: { type: ["string", "null"] }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SalesReturnItemInput" }
+
+    SalesReturn:
+      type: object
+      required: [id, returnNumber, invoiceId, totalAmount, refundMethod, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        returnNumber: { type: string }
+        invoiceId: { type: string, format: uuid }
+        invoiceNumber: { type: ["string", "null"] }
+        warehouseId: { type: string, format: uuid }
+        totalAmount: { type: string }
+        totalCost: { type: string }
+        refundMethod: { type: string }
+        reason: { type: ["string", "null"] }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    SalesReturnItem:
+      type: object
+      required: [id, variantId, quantity, unitPrice, lineTotal]
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        sku: { type: ["string", "null"] }
+        productName: { type: ["string", "null"] }
+        quantity: { type: integer }
+        unitPrice: { type: string }
+        lineTotal: { type: string }
+
+    SalesReturnDetail:
+      allOf:
+        - $ref: "#/components/schemas/SalesReturn"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/SalesReturnItem" }
+
+    SalesReturnList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SalesReturn" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    SuspendedOrder:
+      type: object
+      required: [id, cart, itemCount, totalAmount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: ["string", "null"] }
+        customerId: { type: ["string", "null"], format: uuid }
+        customerName: { type: ["string", "null"] }
+        cart: {}
+        itemCount: { type: integer }
+        totalAmount: { type: string }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    SuspendedOrderInput:
+      type: object
+      required: [cart]
+      properties:
+        label: { type: ["string", "null"] }
+        customerId: { type: ["string", "null"], format: uuid }
+        cart: {}
+        itemCount: { type: integer, minimum: 0, default: 0 }
+        totalAmount: { type: number, minimum: 0, default: 0 }
+
+    PurchaseItemInput:
+      type: object
+      required: [variantId, quantity, costPrice]
+      properties:
+        variantId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+        costPrice: { type: number, minimum: 0 }
+
+    PurchasePaymentInput:
+      type: object
+      required: [method, amount]
+      properties:
+        method: { type: string, enum: [CASH, CARD, INSTAPAY, WALLET, CREDIT] }
+        amount: { type: number, minimum: 0 }
+        treasuryAccountId: { type: ["string", "null"], format: uuid }
+
+    CreatePurchaseInput:
+      type: object
+      required: [supplierId, warehouseId, items, payments]
+      properties:
+        supplierId: { type: string, format: uuid }
+        warehouseId: { type: string, format: uuid }
+        supplierInvoiceNumber: { type: ["string", "null"] }
+        invoiceDate: { type: ["string", "null"] }
+        dueDate: { type: ["string", "null"] }
+        discountAmount: { type: number, minimum: 0, default: 0 }
+        taxAmount: { type: number, minimum: 0, default: 0 }
+        notes: { type: ["string", "null"] }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PurchaseItemInput" }
+        payments:
+          type: array
+          items: { $ref: "#/components/schemas/PurchasePaymentInput" }
+
+    Purchase:
+      type: object
+      required: [id, invoiceNumber, supplierId, warehouseId, subtotal, taxAmount, totalAmount, amountPaid, remainingBalance, status, returnStatus, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        invoiceNumber: { type: string }
+        supplierInvoiceNumber: { type: ["string", "null"] }
+        supplierId: { type: string, format: uuid }
+        supplierName: { type: ["string", "null"] }
+        warehouseId: { type: string, format: uuid }
+        warehouseName: { type: ["string", "null"] }
+        invoiceDate: { type: ["string", "null"] }
+        dueDate: { type: ["string", "null"] }
+        subtotal: { type: string }
+        taxAmount: { type: string }
+        totalAmount: { type: string }
+        amountPaid: { type: string }
+        remainingBalance: { type: string }
+        status: { type: string }
+        returnStatus: { type: string }
+        notes: { type: ["string", "null"] }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    PurchaseItem:
+      type: object
+      required: [id, variantId, quantity, costPrice, lineTotal]
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        sku: { type: ["string", "null"] }
+        barcode: { type: ["string", "null"] }
+        productName: { type: ["string", "null"] }
+        colorName: { type: ["string", "null"] }
+        sizeName: { type: ["string", "null"] }
+        quantity: { type: integer }
+        costPrice: { type: string }
+        lineTotal: { type: string }
+        returnedQuantity: { type: integer }
+
+    PurchasePayment:
+      type: object
+      required: [id, method, amount]
+      properties:
+        id: { type: string, format: uuid }
+        method: { type: string }
+        treasuryAccountId: { type: ["string", "null"], format: uuid }
+        accountName: { type: ["string", "null"] }
+        amount: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    PurchaseDetail:
+      allOf:
+        - $ref: "#/components/schemas/Purchase"
+        - type: object
+          required: [items, payments]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/PurchaseItem" }
+            payments:
+              type: array
+              items: { $ref: "#/components/schemas/PurchasePayment" }
+
+    PurchaseList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Purchase" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    PurchaseReturnItemInput:
+      type: object
+      required: [purchaseItemId, quantity]
+      properties:
+        purchaseItemId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+
+    CreatePurchaseReturnInput:
+      type: object
+      required: [purchaseId, items]
+      properties:
+        purchaseId: { type: string, format: uuid }
+        refundMethod: { type: string, enum: [CASH, CARD, INSTAPAY, WALLET, CREDIT], default: CREDIT }
+        treasuryAccountId: { type: ["string", "null"], format: uuid }
+        reason: { type: ["string", "null"] }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/PurchaseReturnItemInput" }
+
+    PurchaseReturn:
+      type: object
+      required: [id, returnNumber, purchaseId, totalAmount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        returnNumber: { type: string }
+        purchaseId: { type: string, format: uuid }
+        invoiceNumber: { type: ["string", "null"] }
+        warehouseId: { type: string, format: uuid }
+        totalAmount: { type: string }
+        reason: { type: ["string", "null"] }
+        userName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    PurchaseReturnItem:
+      type: object
+      required: [id, variantId, quantity, costPrice, lineTotal]
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        sku: { type: ["string", "null"] }
+        productName: { type: ["string", "null"] }
+        quantity: { type: integer }
+        costPrice: { type: string }
+        lineTotal: { type: string }
+
+    PurchaseReturnDetail:
+      allOf:
+        - $ref: "#/components/schemas/PurchaseReturn"
+        - type: object
+          required: [items]
+          properties:
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/PurchaseReturnItem" }
+
+    PurchaseReturnList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PurchaseReturn" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    ExpenseCategory:
+      type: object
+      required: [id, name, isActive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    ExpenseCategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+
+    ExpenseCategoryUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        isActive: { type: boolean }
+
+    Expense:
+      type: object
+      required: [id, categoryId, amount, expenseDate, treasuryAccountId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        categoryId: { type: string, format: uuid }
+        categoryName: { type: ["string", "null"] }
+        amount: { type: string }
+        expenseDate: { type: string, format: date }
+        description: { type: ["string", "null"] }
+        treasuryAccountId: { type: string, format: uuid }
+        recordedBy: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+
+    CreateExpenseInput:
+      type: object
+      required: [categoryId, amount, expenseDate, treasuryAccountId]
+      properties:
+        categoryId: { type: string, format: uuid }
+        amount: { type: number, exclusiveMinimum: 0 }
+        expenseDate: { type: string, format: date }
+        treasuryAccountId: { type: string, format: uuid }
+        description: { type: ["string", "null"] }
+
+    ExpenseList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Expense" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    Employee:
+      type: object
+      required: [id, name, monthlySalary, advanceBalance, isActive, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: ["string", "null"] }
+        name: { type: string }
+        phone: { type: ["string", "null"] }
+        jobTitle: { type: ["string", "null"] }
+        monthlySalary: { type: string }
+        advanceBalance: { type: string }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    EmployeeInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1 }
+        phone: { type: ["string", "null"] }
+        jobTitle: { type: ["string", "null"] }
+        monthlySalary: { type: number, minimum: 0, default: 0 }
+        userId: { type: ["string", "null"], format: uuid }
+
+    EmployeeUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1 }
+        phone: { type: ["string", "null"] }
+        jobTitle: { type: ["string", "null"] }
+        monthlySalary: { type: number, minimum: 0 }
+        isActive: { type: boolean }
+
+    EmployeeAdvance:
+      type: object
+      required: [id, employeeId, amount, advanceDate, treasuryAccountId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeName: { type: ["string", "null"] }
+        amount: { type: string }
+        advanceDate: { type: string, format: date }
+        notes: { type: ["string", "null"] }
+        treasuryAccountId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    CreateAdvanceInput:
+      type: object
+      required: [employeeId, amount, advanceDate, treasuryAccountId]
+      properties:
+        employeeId: { type: string, format: uuid }
+        amount: { type: number, exclusiveMinimum: 0 }
+        advanceDate: { type: string, format: date }
+        treasuryAccountId: { type: string, format: uuid }
+        notes: { type: ["string", "null"] }
+
+    AdvanceList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EmployeeAdvance" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    SalaryRecord:
+      type: object
+      required: [id, employeeId, periodMonth, baseSalary, deductions, bonuses, netAmount, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        employeeId: { type: string, format: uuid }
+        employeeName: { type: ["string", "null"] }
+        periodMonth: { type: string }
+        baseSalary: { type: string }
+        deductions: { type: string }
+        bonuses: { type: string }
+        netAmount: { type: string }
+        status: { type: string, enum: [PENDING, PAID] }
+        treasuryAccountId: { type: ["string", "null"] }
+        paidAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+
+    CreateSalaryInput:
+      type: object
+      required: [employeeId, periodMonth]
+      properties:
+        employeeId: { type: string, format: uuid }
+        periodMonth: { type: string, minLength: 1 }
+        baseSalary: { type: number, minimum: 0 }
+        bonuses: { type: number, minimum: 0, default: 0 }
+        deductions: { type: number, minimum: 0, default: 0 }
+
+    PaySalaryInput:
+      type: object
+      required: [treasuryAccountId]
+      properties:
+        treasuryAccountId: { type: string, format: uuid }
+
+    SalaryList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SalaryRecord" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    EquityMovement:
+      type: object
+      required: [id, type, amount, movementDate, treasuryAccountId, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string, enum: [WITHDRAWAL, DEPOSIT] }
+        amount: { type: string }
+        movementDate: { type: string, format: date }
+        description: { type: ["string", "null"] }
+        treasuryAccountId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    CreateEquityMovementInput:
+      type: object
+      required: [type, amount, movementDate, treasuryAccountId]
+      properties:
+        type: { type: string, enum: [WITHDRAWAL, DEPOSIT] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        movementDate: { type: string, format: date }
+        treasuryAccountId: { type: string, format: uuid }
+        description: { type: ["string", "null"] }
+
+    EquityMovementList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/EquityMovement" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    DashboardKpis:
+      type: object
+      required:
+        [
+          todaySales,
+          todayProfit,
+          todayPurchases,
+          todayExpenses,
+          treasuryBalance,
+          lowStockCount,
+          customerDebts,
+          supplierDebts,
+        ]
+      properties:
+        todaySales: { type: number }
+        todayProfit: { type: number }
+        todayPurchases: { type: number }
+        todayExpenses: { type: number }
+        treasuryBalance: { type: number }
+        cashDrawerBalance: { type: number }
+        lowStockCount: { type: integer }
+        customerDebts: { type: number }
+        supplierDebts: { type: number }
+
+    NamedValue:
+      type: object
+      required: [label, value]
+      properties:
+        label: { type: string }
+        value: { type: number }
+
+    CashFlowPoint:
+      type: object
+      required: [label, inflow, outflow]
+      properties:
+        label: { type: string }
+        inflow: { type: number }
+        outflow: { type: number }
+
+    DashboardCharts:
+      type: object
+      required:
+        [
+          dailySales,
+          monthlyRevenue,
+          cashFlow,
+          bestSellingProducts,
+          salesByPaymentMethod,
+          categoryPerformance,
+        ]
+      properties:
+        dailySales:
+          type: array
+          items: { $ref: "#/components/schemas/NamedValue" }
+        monthlyRevenue:
+          type: array
+          items: { $ref: "#/components/schemas/NamedValue" }
+        cashFlow:
+          type: array
+          items: { $ref: "#/components/schemas/CashFlowPoint" }
+        bestSellingProducts:
+          type: array
+          items: { $ref: "#/components/schemas/NamedValue" }
+        salesByPaymentMethod:
+          type: array
+          items: { $ref: "#/components/schemas/NamedValue" }
+        categoryPerformance:
+          type: array
+          items: { $ref: "#/components/schemas/NamedValue" }
+
+    SalesSummaryRow:
+      type: object
+      required: [id, invoiceNumber, date, total, paymentStatus]
+      properties:
+        id: { type: string, format: uuid }
+        invoiceNumber: { type: string }
+        date: { type: string }
+        customerName: { type: ["string", "null"] }
+        total: { type: string }
+        paymentMethod: { type: ["string", "null"] }
+        paymentStatus: { type: string }
+
+    SalesSummaryReport:
+      type: object
+      required: [rows, count, total]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/SalesSummaryRow" }
+        count: { type: integer }
+        total: { type: number }
+
+    PurchasesSummaryRow:
+      type: object
+      required: [id, invoiceNumber, date, total, status]
+      properties:
+        id: { type: string, format: uuid }
+        invoiceNumber: { type: string }
+        date: { type: string }
+        supplierName: { type: ["string", "null"] }
+        total: { type: string }
+        status: { type: string }
+
+    PurchasesSummaryReport:
+      type: object
+      required: [rows, count, total]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/PurchasesSummaryRow" }
+        count: { type: integer }
+        total: { type: number }
+
+    InventoryStockRow:
+      type: object
+      required: [variantId, productName, quantity, value]
+      properties:
+        variantId: { type: string, format: uuid }
+        productName: { type: string }
+        sku: { type: ["string", "null"] }
+        variantLabel: { type: ["string", "null"] }
+        warehouseName: { type: ["string", "null"] }
+        categoryName: { type: ["string", "null"] }
+        brandName: { type: ["string", "null"] }
+        quantity: { type: integer }
+        reorderPoint: { type: integer }
+        cost: { type: string }
+        value: { type: number }
+
+    InventoryStockReport:
+      type: object
+      required: [rows, totalValue, totalQuantity]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/InventoryStockRow" }
+        totalValue: { type: number }
+        totalQuantity: { type: integer }
+
+    LowStockRow:
+      type: object
+      required: [variantId, productName, quantity, reorderPoint, shortage]
+      properties:
+        variantId: { type: string, format: uuid }
+        productName: { type: string }
+        sku: { type: ["string", "null"] }
+        variantLabel: { type: ["string", "null"] }
+        warehouseName: { type: ["string", "null"] }
+        quantity: { type: integer }
+        reorderPoint: { type: integer }
+        shortage: { type: integer }
+
+    LowStockReport:
+      type: object
+      required: [rows, count]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/LowStockRow" }
+        count: { type: integer }
+
+    ProfitLossReport:
+      type: object
+      required:
+        [revenue, salesReturns, netRevenue, cogs, grossProfit, expenses, salaries, netProfit]
+      properties:
+        revenue: { type: number }
+        salesReturns: { type: number }
+        netRevenue: { type: number }
+        cogs: { type: number }
+        grossProfit: { type: number }
+        expenses: { type: number }
+        salaries: { type: number }
+        netProfit: { type: number }
+
+    TreasuryReportRow:
+      type: object
+      required: [id, date, accountName, direction, amount, balanceAfter, referenceType]
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string }
+        accountName: { type: string }
+        direction: { type: string }
+        amount: { type: string }
+        balanceAfter: { type: string }
+        referenceType: { type: string }
+
+    TreasuryReport:
+      type: object
+      required: [rows, totalIn, totalOut]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/TreasuryReportRow" }
+        totalIn: { type: number }
+        totalOut: { type: number }
+
+    ExpenseReportRow:
+      type: object
+      required: [id, date, amount]
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string }
+        categoryName: { type: ["string", "null"] }
+        description: { type: ["string", "null"] }
+        amount: { type: string }
+
+    ExpenseReport:
+      type: object
+      required: [rows, total]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/ExpenseReportRow" }
+        total: { type: number }
+
+    TopProductRow:
+      type: object
+      required: [variantId, productName, quantitySold, revenue]
+      properties:
+        variantId: { type: string, format: uuid }
+        productName: { type: string }
+        sku: { type: ["string", "null"] }
+        quantitySold: { type: integer }
+        revenue: { type: number }
+
+    TopProductsReport:
+      type: object
+      required: [rows]
+      properties:
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/TopProductRow" }
+
+    StoreSettings:
+      type: object
+      required:
+        [
+          id,
+          currency,
+          taxEnabled,
+          taxRate,
+          taxInclusive,
+          receiptSize,
+          numeralFormat,
+          allowNegativeStock,
+          allowBelowCostDiscount,
+          allowNegativeTreasury,
+          requireSessionForCash,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        storeName: { type: ["string", "null"] }
+        storePhone: { type: ["string", "null"] }
+        storeAddress: { type: ["string", "null"] }
+        logoUrl: { type: ["string", "null"] }
+        currency: { type: string }
+        taxEnabled: { type: boolean }
+        taxRate: { type: string }
+        taxInclusive: { type: boolean }
+        receiptSize: { type: string }
+        receiptFooter: { type: ["string", "null"] }
+        numeralFormat: { type: string }
+        allowNegativeStock: { type: boolean }
+        allowBelowCostDiscount: { type: boolean }
+        allowNegativeTreasury: { type: boolean }
+        requireSessionForCash: { type: boolean }
+
+    UpdateStoreSettingsInput:
+      type: object
+      properties:
+        logoUrl: { type: ["string", "null"], maxLength: 1000 }
+        currency: { type: string, minLength: 1, maxLength: 8 }
+        taxEnabled: { type: boolean }
+        taxRate: { type: number, minimum: 0, maximum: 100 }
+        taxInclusive: { type: boolean }
+        receiptSize: { type: string, enum: ["58mm", "80mm", "A4"] }
+        receiptFooter: { type: ["string", "null"], maxLength: 500 }
+        numeralFormat: { type: string, enum: ["western", "arabic"] }
+        allowNegativeStock: { type: boolean }
+        allowBelowCostDiscount: { type: boolean }
+        allowNegativeTreasury: { type: boolean }
+        requireSessionForCash: { type: boolean }
+
+    NumberSequence:
+      type: object
+      required: [id, kind, prefix, padding, nextValue]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        prefix: { type: string }
+        padding: { type: integer }
+        nextValue: { type: integer }
+
+    UpdateNumberSequenceInput:
+      type: object
+      properties:
+        prefix: { type: string, maxLength: 12 }
+        padding: { type: integer, minimum: 1, maximum: 10 }
+
+    Notification:
+      type: object
+      required: [id, type, severity, title, isRead, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { type: string }
+        severity: { type: string }
+        title: { type: string }
+        body: { type: ["string", "null"] }
+        referenceType: { type: ["string", "null"] }
+        referenceId: { type: ["string", "null"] }
+        isRead: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: ["string", "null"] }
+
+    NotificationList:
+      type: object
+      required: [items, total, unread, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Notification" }
+        total: { type: integer }
+        unread: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    UnreadCount:
+      type: object
+      required: [unread]
+      properties:
+        unread: { type: integer }
+
+    CreateTransferItem:
+      type: object
+      required: [variantId, quantity]
+      properties:
+        variantId: { type: string, format: uuid }
+        quantity: { type: integer, minimum: 1 }
+
+    CreateTransferInput:
+      type: object
+      required: [fromWarehouseId, toWarehouseId, items]
+      properties:
+        fromWarehouseId: { type: string, format: uuid }
+        toWarehouseId: { type: string, format: uuid }
+        notes: { type: ["string", "null"], maxLength: 500 }
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/CreateTransferItem" }
+
+    TransferSummary:
+      type: object
+      required:
+        [id, transferNumber, fromWarehouseName, toWarehouseName, status, itemCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        transferNumber: { type: string }
+        fromWarehouseName: { type: ["string", "null"] }
+        toWarehouseName: { type: ["string", "null"] }
+        status: { type: string }
+        itemCount: { type: integer }
+        notes: { type: ["string", "null"] }
+        createdByName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        confirmedAt: { type: ["string", "null"] }
+
+    TransferList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/TransferSummary" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    TransferItem:
+      type: object
+      required: [id, variantId, quantity]
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        productName: { type: ["string", "null"] }
+        sku: { type: ["string", "null"] }
+        variantLabel: { type: ["string", "null"] }
+        quantity: { type: integer }
+
+    TransferDetail:
+      allOf:
+        - $ref: "#/components/schemas/TransferSummary"
+        - type: object
+          required: [items]
+          properties:
+            fromWarehouseId: { type: string, format: uuid }
+            toWarehouseId: { type: string, format: uuid }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/TransferItem" }
+
+    CreateStockCountInput:
+      type: object
+      required: [warehouseId]
+      properties:
+        warehouseId: { type: string, format: uuid }
+        notes: { type: ["string", "null"], maxLength: 500 }
+
+    UpdateStockCountItemEntry:
+      type: object
+      required: [itemId, countedQuantity]
+      properties:
+        itemId: { type: string, format: uuid }
+        countedQuantity: { type: integer, minimum: 0 }
+
+    UpdateStockCountItemsInput:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/UpdateStockCountItemEntry" }
+
+    StockCountSummary:
+      type: object
+      required: [id, countNumber, warehouseName, status, itemCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        countNumber: { type: string }
+        warehouseName: { type: ["string", "null"] }
+        status: { type: string }
+        itemCount: { type: integer }
+        notes: { type: ["string", "null"] }
+        createdByName: { type: ["string", "null"] }
+        createdAt: { type: string, format: date-time }
+        completedAt: { type: ["string", "null"] }
+
+    StockCountList:
+      type: object
+      required: [items, total, page, pageSize]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/StockCountSummary" }
+        total: { type: integer }
+        page: { type: integer }
+        pageSize: { type: integer }
+
+    StockCountItem:
+      type: object
+      required: [id, variantId, expectedQuantity]
+      properties:
+        id: { type: string, format: uuid }
+        variantId: { type: string, format: uuid }
+        productName: { type: ["string", "null"] }
+        sku: { type: ["string", "null"] }
+        variantLabel: { type: ["string", "null"] }
+        expectedQuantity: { type: integer }
+        countedQuantity: { type: ["integer", "null"] }
+
+    StockCountDetail:
+      allOf:
+        - $ref: "#/components/schemas/StockCountSummary"
+        - type: object
+          required: [items]
+          properties:
+            warehouseId: { type: string, format: uuid }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/StockCountItem" }

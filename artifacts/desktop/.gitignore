@@ -1,0 +1,13 @@
+# Desktop build output
+dist/
+
+# Electron download cache
+.cache/
+
+# Build artifacts
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap

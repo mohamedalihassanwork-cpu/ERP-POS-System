@@ -1,0 +1,27 @@
+{
+  "name": "@workspace/desktop",
+  "version": "1.0.0",
+  "description": "نظام نقاط البيع — Shoe Store POS Desktop Application",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "dev": "node build-all.mjs --dev",
+    "build": "node build-all.mjs",
+    "dist": "node build-all.mjs --package",
+    "electron:dev": "electron .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "electron": "42.5.2",
+    "electron-builder": "^25.1.8",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "extends": "./electron-builder.yml"
+  }
+}
