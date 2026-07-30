@@ -85,11 +85,25 @@ export async function ensureStoreFinancials(dbc: DbLike, storeId: string): Promi
     )
     .onConflictDoNothing();
 
-  // Seed the store-level MAIN_SAFE (user_id = NULL)
-  await dbc
-    .insert(treasuryAccountsTable)
-    .values({ storeId, type: "MAIN_SAFE", name: "الخزينة الرئيسية", userId: null })
-    .onConflictDoNothing();
+  // Seed the store-level MAIN_SAFE (user_id = NULL) if it doesn't exist
+  const [existingMainSafe] = await (dbc as typeof db)
+    .select({ id: treasuryAccountsTable.id })
+    .from(treasuryAccountsTable)
+    .where(
+      and(
+        eq(treasuryAccountsTable.storeId, storeId),
+        eq(treasuryAccountsTable.type, "MAIN_SAFE"),
+        isNull(treasuryAccountsTable.userId)
+      )
+    )
+    .limit(1);
+
+  if (!existingMainSafe) {
+    await dbc
+      .insert(treasuryAccountsTable)
+      .values({ storeId, type: "MAIN_SAFE", name: "الخزينة الرئيسية", userId: null })
+      .onConflictDoNothing();
+  }
 
   await dbc.insert(storeSettingsTable).values({ storeId }).onConflictDoNothing();
 }
@@ -102,16 +116,30 @@ export async function ensureCashierAccounts(
   userId: string,
   userName?: string,
 ): Promise<void> {
+  const existingAccounts = await (dbc as typeof db)
+    .select({ type: treasuryAccountsTable.type })
+    .from(treasuryAccountsTable)
+    .where(
+      and(
+        eq(treasuryAccountsTable.storeId, storeId),
+        eq(treasuryAccountsTable.userId, userId)
+      )
+    );
+  
+  const existingTypes = new Set(existingAccounts.map((a) => a.type));
+
   for (const acctDef of CASHIER_ACCOUNT_TYPES) {
-    await dbc
-      .insert(treasuryAccountsTable)
-      .values({
-        storeId,
-        userId,
-        type: acctDef.type,
-        name: userName ? `${acctDef.nameTemplate} — ${userName}` : acctDef.nameTemplate,
-      })
-      .onConflictDoNothing();
+    if (!existingTypes.has(acctDef.type)) {
+      await dbc
+        .insert(treasuryAccountsTable)
+        .values({
+          storeId,
+          userId,
+          type: acctDef.type,
+          name: userName ? `${acctDef.nameTemplate} — ${userName}` : acctDef.nameTemplate,
+        })
+        .onConflictDoNothing();
+    }
   }
 }
 
