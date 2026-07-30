@@ -116,9 +116,13 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     module: "treasury",
     labelAr: "الخزينة",
     permissions: [
-      { key: "treasury.view", labelAr: "عرض الخزينة" },
-      { key: "treasury.session", labelAr: "فتح/إغلاق وردية الخزينة" },
-      { key: "treasury.manage", labelAr: "إدارة معاملات الخزينة" },
+      { key: "treasury.view", labelAr: "عرض خزينتي الخاصة" },
+      { key: "treasury.view_all", labelAr: "عرض خزائن جميع الكاشيرية" },
+      { key: "treasury.session", labelAr: "فتح/إغلاق يومي التشغيلي الخاص" },
+      { key: "treasury.transfer", labelAr: "تحويل رصيد بين الخزائن" },
+      { key: "treasury.adjustment", labelAr: "تسوية يدوية للخزينة" },
+      { key: "treasury.main_safe", labelAr: "عرض والوصول إلى الخزينة الرئيسية" },
+      { key: "treasury.close_others", labelAr: "إغلاق يوم تشغيلي لكاشير آخر" },
     ],
   },
   {

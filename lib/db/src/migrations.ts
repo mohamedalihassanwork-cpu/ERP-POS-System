@@ -27,6 +27,157 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 2,
+    name: "store_settings_shift_start_hour",
+    up: async (client) => {
+      // Add configurable operational day start hour to store_settings
+      const cols = await client.execute(`PRAGMA table_info(store_settings);`);
+      const hasCol = cols.rows.some((r: any) => r.name === "shift_start_hour");
+      if (!hasCol) {
+        await client.execute(
+          `ALTER TABLE store_settings ADD COLUMN shift_start_hour INTEGER NOT NULL DEFAULT 11;`,
+        );
+      }
+    },
+  },
+  {
+    version: 3,
+    name: "treasury_accounts_per_cashier",
+    up: async (client) => {
+      // 1. Add user_id column to treasury_accounts (nullable for MAIN_SAFE)
+      const cols = await client.execute(`PRAGMA table_info(treasury_accounts);`);
+      const hasUserId = cols.rows.some((r: any) => r.name === "user_id");
+      if (!hasUserId) {
+        await client.execute(
+          `ALTER TABLE treasury_accounts ADD COLUMN user_id TEXT REFERENCES users(id);`,
+        );
+      }
+
+      // 2. Drop the old unique index that prevented multiple accounts of same type
+      try {
+        await client.execute(
+          `DROP INDEX IF EXISTS treasury_accounts_store_type_unique;`,
+        );
+      } catch (_err) { /* ignore */ }
+
+      // 3. Create new composite indexes (user_id is nullable — handled at app layer)
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS treasury_accounts_store_type_user_idx ON treasury_accounts (store_id, type, user_id);`,
+      );
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS treasury_accounts_store_user_idx ON treasury_accounts (store_id, user_id);`,
+      );
+
+      // 4. Remove session_id from treasury_transactions (can't DROP COLUMN in old SQLite)
+      // Add operational_day_id instead
+      const txCols = await client.execute(`PRAGMA table_info(treasury_transactions);`);
+      const hasOpDayId = txCols.rows.some((r: any) => r.name === "operational_day_id");
+      if (!hasOpDayId) {
+        await client.execute(
+          `ALTER TABLE treasury_transactions ADD COLUMN operational_day_id TEXT;`,
+        );
+        await client.execute(
+          `CREATE INDEX IF NOT EXISTS treasury_tx_opday_idx ON treasury_transactions (operational_day_id);`,
+        );
+      }
+    },
+  },
+  {
+    version: 4,
+    name: "operational_days_table",
+    up: async (client) => {
+      await client.execute(`
+        CREATE TABLE IF NOT EXISTS operational_days (
+          id TEXT PRIMARY KEY NOT NULL,
+          store_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'OPEN',
+          opened_at INTEGER NOT NULL DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)),
+          closed_at INTEGER,
+          opening_cash_balance TEXT NOT NULL DEFAULT '0',
+          carry_over_cash TEXT NOT NULL DEFAULT '0',
+          actual_closing_cash_balance TEXT,
+          expected_closing_cash_balance TEXT,
+          cash_variance TEXT,
+          total_transferred_to_main_safe TEXT NOT NULL DEFAULT '0',
+          notes TEXT,
+          opened_by TEXT NOT NULL,
+          closed_by TEXT,
+          created_at INTEGER NOT NULL DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer))
+        );
+      `);
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS op_days_store_user_idx ON operational_days (store_id, user_id);`,
+      );
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS op_days_store_status_idx ON operational_days (store_id, status);`,
+      );
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS op_days_store_created_idx ON operational_days (store_id, created_at);`,
+      );
+    },
+  },
+  {
+    version: 5,
+    name: "cashier_balance_snapshots_table",
+    up: async (client) => {
+      await client.execute(`
+        CREATE TABLE IF NOT EXISTS cashier_balance_snapshots (
+          id TEXT PRIMARY KEY NOT NULL,
+          store_id TEXT NOT NULL,
+          operational_day_id TEXT NOT NULL,
+          treasury_account_id TEXT NOT NULL,
+          snapshot_type TEXT NOT NULL,
+          balance TEXT NOT NULL DEFAULT '0',
+          total_in TEXT NOT NULL DEFAULT '0',
+          total_out TEXT NOT NULL DEFAULT '0',
+          created_at INTEGER NOT NULL DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer))
+        );
+      `);
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS balance_snapshots_opday_idx ON cashier_balance_snapshots (operational_day_id);`,
+      );
+      await client.execute(
+        `CREATE INDEX IF NOT EXISTS balance_snapshots_account_idx ON cashier_balance_snapshots (treasury_account_id);`,
+      );
+    },
+  },
+  {
+    version: 6,
+    name: "treasury_accounts_unique_index_fix",
+    up: async (client) => {
+      // ROOT-CAUSE FIX: the treasury_accounts_store_type_user_idx was created as
+      // a plain (non-unique) index in migration v3.  SQLite's INSERT OR IGNORE /
+      // onConflictDoNothing only suppresses conflicts on PRIMARY KEY and UNIQUE
+      // constraints, so ensureCashierAccounts silently inserted duplicate rows on
+      // every call instead of being idempotent.  This migration:
+      //   1. Deduplicates existing rows (keep the one with the lowest rowid).
+      //   2. Drops the old non-unique index.
+      //   3. Creates a UNIQUE INDEX so INSERT OR IGNORE works correctly.
+
+      // Step 1 — remove duplicates, keep the earliest-created row per (store, type, user)
+      await client.execute(`
+        DELETE FROM treasury_accounts
+        WHERE rowid NOT IN (
+          SELECT MIN(rowid)
+          FROM treasury_accounts
+          GROUP BY store_id, type, COALESCE(user_id, '')
+        );
+      `);
+
+      // Step 2 — drop the old non-unique index
+      await client.execute(
+        `DROP INDEX IF EXISTS treasury_accounts_store_type_user_idx;`,
+      );
+
+      // Step 3 — recreate as UNIQUE so onConflictDoNothing works
+      await client.execute(
+        `CREATE UNIQUE INDEX IF NOT EXISTS treasury_accounts_store_type_user_idx
+         ON treasury_accounts (store_id, type, user_id);`,
+      );
+    },
+  },
 ];
 
 // ── Atomic Migration Runner ───────────────────────────────────────────────────

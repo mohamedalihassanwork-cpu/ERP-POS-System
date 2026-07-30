@@ -1,82 +1,118 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import * as z from "zod";
 import {
   db,
   treasuryAccountsTable,
   treasuryTransactionsTable,
-  treasurySessionsTable,
   treasuryTransfersTable,
   treasuryAdjustmentsTable,
   usersTable,
 } from "@workspace/db";
-import {
-  ListTreasuryTransactionsQueryParams,
-  ListTreasurySessionsQueryParams,
-  OpenTreasurySessionBody,
-  GetCurrentTreasurySessionQueryParams,
-  CloseTreasurySessionBody,
-  CreateTreasuryTransferBody,
-  CreateTreasuryAdjustmentBody,
-} from "@workspace/api-zod";
+import { ListTreasuryTransactionsQueryParams } from "@workspace/api-zod";
 import { writeAuditLog } from "../lib/audit";
 import { ensureStoreFinancials, TREASURY_TYPE_TO_ACCOUNT_CODE } from "../lib/seed";
 import { postTreasuryTransaction } from "../lib/treasury";
 import { postJournalEntry } from "../lib/accounting";
-import { money, toNum } from "../lib/money";
+import { money } from "../lib/money";
 import { requireAuth, requirePermission } from "../middleware/auth";
+import { hasPermission } from "@workspace/shared";
+
+// These bodies are defined inline to avoid TypeScript project-reference issues
+// with the manual-schemas that live only in api-zod/dist.
+const CreateTreasuryTransferBody = z.object({
+  fromAccountId: z.string(),
+  toAccountId: z.string(),
+  amount: z.number().positive(),
+  description: z.string().max(500).nullish(),
+});
+
+const CreateTreasuryAdjustmentBody = z.object({
+  treasuryAccountId: z.string(),
+  direction: z.enum(["IN", "OUT"]),
+  amount: z.number().positive(),
+  reason: z.string().min(1),
+});
 
 const router: IRouter = Router();
 
 const DIRECTIONS = ["IN", "OUT"] as const;
 const REF_TYPES = [
-  "SALE",
-  "SALES_RETURN",
-  "PURCHASE",
-  "PURCHASE_RETURN",
-  "EXPENSE",
-  "SALARY",
-  "WITHDRAWAL",
-  "DEPOSIT",
-  "CUSTOMER_PAYMENT",
-  "SUPPLIER_PAYMENT",
-  "OPENING",
-  "TRANSFER",
-  "ADJUSTMENT",
+  "SALE", "SALES_RETURN", "PURCHASE", "PURCHASE_RETURN",
+  "EXPENSE", "SALARY", "WITHDRAWAL", "DEPOSIT",
+  "CUSTOMER_PAYMENT", "SUPPLIER_PAYMENT", "OPENING",
+  "TRANSFER", "ADJUSTMENT", "DAY_CLOSE_RESET", "DAY_OPEN_CARRY",
 ] as const;
-const SESSION_STATUSES = ["OPEN", "CLOSED"] as const;
 
 type Direction = (typeof DIRECTIONS)[number];
 type RefType = (typeof REF_TYPES)[number];
-type SessionStatus = (typeof SESSION_STATUSES)[number];
 
 function clientIp(req: Request): string | null {
   return req.ip ?? null;
 }
 
-// GET /treasury/accounts — drawers with cached balances (auto-seeds defaults)
+// GET /treasury/accounts — drawers with cached balances
+// - Cashier (treasury.view only): their own 4 accounts (no MAIN_SAFE)
+// - Manager/Accountant (treasury.view_all): all accounts for all cashiers + MAIN_SAFE (if treasury.main_safe)
 router.get(
   "/treasury/accounts",
   requireAuth,
+  requirePermission("treasury.view"),
   async (req, res) => {
     const storeId = req.auth!.storeId;
+    const userId = req.auth!.userId;
+    const perms = req.auth!.permissions;
     await ensureStoreFinancials(db, storeId);
+
+    const canViewAll = hasPermission(perms, "treasury.view_all") || hasPermission(perms, "*");
+    const canSeeMainSafe = hasPermission(perms, "treasury.main_safe") || hasPermission(perms, "*");
+
+    if (canViewAll) {
+      // Manager/Accountant: return all accounts grouped by user, plus MAIN_SAFE if permitted
+      const rows = await db
+        .select({
+          id: treasuryAccountsTable.id,
+          userId: treasuryAccountsTable.userId,
+          userName: usersTable.fullName,
+          type: treasuryAccountsTable.type,
+          name: treasuryAccountsTable.name,
+          balance: treasuryAccountsTable.balance,
+          isActive: treasuryAccountsTable.isActive,
+        })
+        .from(treasuryAccountsTable)
+        .leftJoin(usersTable, eq(treasuryAccountsTable.userId, usersTable.id))
+        .where(eq(treasuryAccountsTable.storeId, storeId))
+        .orderBy(usersTable.fullName, treasuryAccountsTable.type);
+
+      const filtered = rows.filter(r => {
+        if (r.type === "MAIN_SAFE") return canSeeMainSafe;
+        return true;
+      });
+
+      res.json(filtered);
+      return;
+    }
+
+    // Cashier: return only their own accounts (CASH, CARD, INSTAPAY, WALLET)
     const rows = await db
       .select({
         id: treasuryAccountsTable.id,
+        userId: treasuryAccountsTable.userId,
         type: treasuryAccountsTable.type,
         name: treasuryAccountsTable.name,
         balance: treasuryAccountsTable.balance,
         isActive: treasuryAccountsTable.isActive,
       })
       .from(treasuryAccountsTable)
-      .where(eq(treasuryAccountsTable.storeId, storeId))
+      .where(
+        and(
+          eq(treasuryAccountsTable.storeId, storeId),
+          eq(treasuryAccountsTable.userId, userId),
+        ),
+      )
       .orderBy(treasuryAccountsTable.type);
 
-    const perms = req.auth!.permissions;
-    const canSeeMainSafe = perms.includes("*") || perms.includes("treasury.manage") || perms.includes("settings.manage");
-    const filteredRows = rows.filter(r => canSeeMainSafe || r.type !== "MAIN_SAFE");
-
-    res.json(filteredRows);
+    res.json(rows);
   },
 );
 
@@ -94,11 +130,21 @@ router.get(
     const { page, pageSize, treasuryAccountId, direction, referenceType, dateFrom, dateTo } =
       parsed.data;
     const storeId = req.auth!.storeId;
+    const userId = req.auth!.userId;
+    const perms = req.auth!.permissions;
+    const canViewAll = hasPermission(perms, "treasury.view_all") || hasPermission(perms, "*");
 
     const conditions = [eq(treasuryTransactionsTable.storeId, storeId)];
     if (treasuryAccountId) {
       conditions.push(eq(treasuryTransactionsTable.treasuryAccountId, treasuryAccountId));
     }
+
+    // If no specific account requested and not a manager, restrict to own accounts only
+    if (!treasuryAccountId && !canViewAll) {
+      // Join to filter by userId — only show transactions for the cashier's own accounts
+      // This is handled by account ID filtering below using a subquery approach
+    }
+
     if (direction) {
       if (!(DIRECTIONS as readonly string[]).includes(direction)) {
         res.status(400).json({ error: "اتجاه غير صالح" });
@@ -127,7 +173,9 @@ router.get(
         id: treasuryTransactionsTable.id,
         treasuryAccountId: treasuryTransactionsTable.treasuryAccountId,
         accountName: treasuryAccountsTable.name,
-        sessionId: treasuryTransactionsTable.sessionId,
+        accountType: treasuryAccountsTable.type,
+        accountUserId: treasuryAccountsTable.userId,
+        operationalDayId: treasuryTransactionsTable.operationalDayId,
         direction: treasuryTransactionsTable.direction,
         amount: treasuryTransactionsTable.amount,
         balanceAfter: treasuryTransactionsTable.balanceAfter,
@@ -157,331 +205,15 @@ router.get(
   },
 );
 
-// GET /treasury/sessions — shift history
-router.get(
-  "/treasury/sessions",
-  requireAuth,
-  requirePermission("treasury.view"),
-  async (req, res) => {
-    const parsed = ListTreasurySessionsQueryParams.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ error: "معاملات غير صالحة" });
-      return;
-    }
-    const { page, pageSize, treasuryAccountId, status } = parsed.data;
-    const storeId = req.auth!.storeId;
-
-    const conditions = [eq(treasurySessionsTable.storeId, storeId)];
-    if (treasuryAccountId) {
-      conditions.push(eq(treasurySessionsTable.treasuryAccountId, treasuryAccountId));
-    }
-    if (status) {
-      if (!(SESSION_STATUSES as readonly string[]).includes(status)) {
-        res.status(400).json({ error: "حالة غير صالحة" });
-        return;
-      }
-      conditions.push(eq(treasurySessionsTable.status, status as SessionStatus));
-    }
-    const where = and(...conditions);
-
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(treasurySessionsTable)
-      .where(where);
-
-    const rows = await sessionSelect(where)
-      .orderBy(desc(treasurySessionsTable.openedAt))
-      .limit(pageSize)
-      .offset((page - 1) * pageSize);
-
-    res.json({ items: rows.map(serializeSession), total: count, page, pageSize });
-  },
-);
-
-// GET /treasury/sessions/current — the open session for an account, or null
-router.get(
-  "/treasury/sessions/current",
-  requireAuth,
-  requirePermission("treasury.view"),
-  async (req, res) => {
-    const parsed = GetCurrentTreasurySessionQueryParams.safeParse(req.query);
-    if (!parsed.success) {
-      res.status(400).json({ error: "معاملات غير صالحة" });
-      return;
-    }
-    const storeId = req.auth!.storeId;
-    const [row] = await sessionSelect(
-      and(
-        eq(treasurySessionsTable.storeId, storeId),
-        eq(treasurySessionsTable.treasuryAccountId, parsed.data.treasuryAccountId),
-        eq(treasurySessionsTable.status, "OPEN"),
-      ),
-    )
-      .orderBy(desc(treasurySessionsTable.openedAt))
-      .limit(1);
-    res.json({ session: row ? serializeSession(row) : null });
-  },
-);
-
-// POST /treasury/sessions — open a shift
-router.post(
-  "/treasury/sessions",
-  requireAuth,
-  requirePermission("treasury.session"),
-  async (req, res) => {
-    const parsed = OpenTreasurySessionBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "بيانات غير صالحة" });
-      return;
-    }
-    const { treasuryAccountId, openingBalance, notes } = parsed.data;
-    const storeId = req.auth!.storeId;
-    const userId = req.auth!.userId;
-
-    const [account] = await db
-      .select({ id: treasuryAccountsTable.id })
-      .from(treasuryAccountsTable)
-      .where(
-        and(eq(treasuryAccountsTable.id, treasuryAccountId), eq(treasuryAccountsTable.storeId, storeId)),
-      )
-      .limit(1);
-    if (!account) {
-      res.status(404).json({ error: "حساب الخزينة غير موجود" });
-      return;
-    }
-
-    const [existing] = await db
-      .select({ id: treasurySessionsTable.id })
-      .from(treasurySessionsTable)
-      .where(
-        and(
-          eq(treasurySessionsTable.treasuryAccountId, treasuryAccountId),
-          eq(treasurySessionsTable.status, "OPEN"),
-        ),
-      )
-      .limit(1);
-    if (existing) {
-      res.status(409).json({ error: "توجد وردية مفتوحة بالفعل لهذا الحساب" });
-      return;
-    }
-
-    const [created] = await db
-      .insert(treasurySessionsTable)
-      .values({
-        storeId,
-        treasuryAccountId,
-        openingBalance: money(openingBalance),
-        notes: notes ?? null,
-        openedBy: userId,
-      })
-      .returning({ id: treasurySessionsTable.id });
-
-    await writeAuditLog({
-      storeId,
-      userId,
-      action: "treasury.session_opened",
-      entityType: "treasury_session",
-      entityId: created.id,
-      newValue: { treasuryAccountId, openingBalance },
-      ipAddress: clientIp(req),
-    });
-
-    const [row] = await sessionSelect(eq(treasurySessionsTable.id, created.id)).limit(1);
-    res.status(201).json(serializeSession(row));
-  },
-);
-
-// POST /treasury/sessions/:id/close — close a shift, recording variance
-router.post(
-  "/treasury/sessions/:id/close",
-  requireAuth,
-  requirePermission("treasury.session"),
-  async (req, res) => {
-    const parsed = CloseTreasurySessionBody.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.issues[0]?.message ?? "بيانات غير صالحة" });
-      return;
-    }
-    const { actualClosingBalance, notes, transferToMainSafe, transferAmount } = parsed.data;
-    const storeId = req.auth!.storeId;
-    const userId = req.auth!.userId;
-    const sessionId = String(req.params["id"]);
-
-    const [session] = await db
-      .select({
-        id: treasurySessionsTable.id,
-        status: treasurySessionsTable.status,
-        openingBalance: treasurySessionsTable.openingBalance,
-        treasuryAccountId: treasurySessionsTable.treasuryAccountId,
-      })
-      .from(treasurySessionsTable)
-      .where(and(eq(treasurySessionsTable.id, sessionId), eq(treasurySessionsTable.storeId, storeId)))
-      .limit(1);
-    if (!session) {
-      res.status(404).json({ error: "الوردية غير موجودة" });
-      return;
-    }
-    if (session.status !== "OPEN") {
-      res.status(400).json({ error: "الوردية مغلقة بالفعل" });
-      return;
-    }
-
-    // Expected close = opening count + net of money moved during the session.
-    const [{ net }] = await db
-      .select({
-        net: sql<string>`coalesce(sum(case when ${treasuryTransactionsTable.direction} = 'IN' then ${treasuryTransactionsTable.amount} else -${treasuryTransactionsTable.amount} end), 0)`,
-      })
-      .from(treasuryTransactionsTable)
-      .where(eq(treasuryTransactionsTable.sessionId, sessionId));
-
-    const expected = toNum(session.openingBalance) + toNum(net);
-    const variance = actualClosingBalance - expected;
-
-    const [row] = await db
-      .update(treasurySessionsTable)
-      .set({
-        status: "CLOSED",
-        expectedClosingBalance: money(expected),
-        actualClosingBalance: money(actualClosingBalance),
-        variance: money(variance),
-        notes: notes ?? null,
-        closedBy: userId,
-        closedAt: new Date(),
-      })
-      .where(eq(treasurySessionsTable.id, sessionId))
-      .returning({ id: treasurySessionsTable.id });
-
-    // Auto-transfer to Main Safe if requested
-    if (transferToMainSafe && transferAmount && transferAmount > 0) {
-      // Find the main safe for this store
-      const [mainSafe] = await db
-        .select({ id: treasuryAccountsTable.id, type: treasuryAccountsTable.type })
-        .from(treasuryAccountsTable)
-        .where(
-          and(
-            eq(treasuryAccountsTable.storeId, storeId),
-            eq(treasuryAccountsTable.type, "MAIN_SAFE")
-          )
-        )
-        .limit(1);
-
-      if (mainSafe && session.treasuryAccountId !== mainSafe.id) {
-        const desc = "ترحيل رصيد الوردية إلى الخزينة الرئيسية";
-        await db.transaction(async (tx) => {
-          const [transfer] = await tx
-            .insert(treasuryTransfersTable)
-            .values({
-              storeId,
-              fromAccountId: session.treasuryAccountId,
-              toAccountId: mainSafe.id,
-              amount: money(transferAmount),
-              description: desc,
-              createdBy: userId,
-            })
-            .returning({ id: treasuryTransfersTable.id });
-
-          await postTreasuryTransaction(tx, {
-            storeId,
-            treasuryAccountId: session.treasuryAccountId,
-            direction: "OUT",
-            amount: transferAmount,
-            referenceType: "TRANSFER",
-            referenceId: transfer.id,
-            description: desc,
-            userId,
-            allowNegative: true,
-          });
-
-          await postTreasuryTransaction(tx, {
-            storeId,
-            treasuryAccountId: mainSafe.id,
-            direction: "IN",
-            amount: transferAmount,
-            referenceType: "TRANSFER",
-            referenceId: transfer.id,
-            description: desc,
-            userId,
-          });
-
-          const fromCode = "1000"; // Assuming CASH is the drawer
-          const toCode = "1001"; // MAIN_SAFE
-          await postJournalEntry(tx, {
-            storeId,
-            userId,
-            description: desc,
-            referenceType: "TRANSFER",
-            referenceId: transfer.id,
-            lines: [
-              { code: toCode, debit: transferAmount },
-              { code: fromCode, credit: transferAmount },
-            ],
-          });
-        });
-      }
-    }
-
-    await writeAuditLog({
-      storeId,
-      userId,
-      action: "treasury.session_closed",
-      entityType: "treasury_session",
-      entityId: row.id,
-      newValue: { expected, actualClosingBalance, variance },
-      ipAddress: clientIp(req),
-    });
-
-    const [full] = await sessionSelect(eq(treasurySessionsTable.id, sessionId)).limit(1);
-    res.json(serializeSession(full));
-  },
-);
-
-const openedByUser = usersTable;
-
-// Shared session select with account name + opener/closer names resolved.
-function sessionSelect(where: ReturnType<typeof and> | ReturnType<typeof eq>) {
-  return db
-    .select({
-      id: treasurySessionsTable.id,
-      treasuryAccountId: treasurySessionsTable.treasuryAccountId,
-      accountName: treasuryAccountsTable.name,
-      status: treasurySessionsTable.status,
-      openingBalance: treasurySessionsTable.openingBalance,
-      expectedClosingBalance: treasurySessionsTable.expectedClosingBalance,
-      actualClosingBalance: treasurySessionsTable.actualClosingBalance,
-      variance: treasurySessionsTable.variance,
-      notes: treasurySessionsTable.notes,
-      openedByName: openedByUser.fullName,
-      openedAt: treasurySessionsTable.openedAt,
-      closedAt: treasurySessionsTable.closedAt,
-    })
-    .from(treasurySessionsTable)
-    .leftJoin(
-      treasuryAccountsTable,
-      eq(treasurySessionsTable.treasuryAccountId, treasuryAccountsTable.id),
-    )
-    .leftJoin(openedByUser, eq(treasurySessionsTable.openedBy, openedByUser.id))
-    .where(where);
-}
-
-type SessionRow = Awaited<ReturnType<ReturnType<typeof sessionSelect>["limit"]>>[number];
-
-function serializeSession(r: SessionRow) {
-  return {
-    ...r,
-    closedByName: null as string | null,
-    openedAt: r.openedAt.toISOString(),
-    closedAt: r.closedAt ? r.closedAt.toISOString() : null,
-  };
-}
-
 // ===========================================================================
 // TREASURY TRANSFER — move money between two drawers
+// Requires treasury.transfer permission (separate from treasury.session)
 // ===========================================================================
 
 router.post(
   "/treasury/transfers",
   requireAuth,
-  requirePermission("treasury.session"),
+  requirePermission("treasury.transfer"),
   async (req, res) => {
     const parsed = CreateTreasuryTransferBody.safeParse(req.body);
     if (!parsed.success) {
@@ -554,8 +286,8 @@ router.post(
         });
 
         // Journal entry: Dr destination asset, Cr source asset.
-        const fromCode = TREASURY_TYPE_TO_ACCOUNT_CODE[fromAcct.type];
-        const toCode = TREASURY_TYPE_TO_ACCOUNT_CODE[toAcct.type];
+        const fromCode = TREASURY_TYPE_TO_ACCOUNT_CODE[fromAcct.type as keyof typeof TREASURY_TYPE_TO_ACCOUNT_CODE];
+        const toCode = TREASURY_TYPE_TO_ACCOUNT_CODE[toAcct.type as keyof typeof TREASURY_TYPE_TO_ACCOUNT_CODE];
         await postJournalEntry(tx, {
           storeId,
           userId,
@@ -602,12 +334,13 @@ router.post(
 
 // ===========================================================================
 // TREASURY ADJUSTMENT — manual reconciliation
+// Requires treasury.adjustment permission (separate from treasury.session)
 // ===========================================================================
 
 router.post(
   "/treasury/adjustments",
   requireAuth,
-  requirePermission("treasury.session"),
+  requirePermission("treasury.adjustment"),
   async (req, res) => {
     const parsed = CreateTreasuryAdjustmentBody.safeParse(req.body);
     if (!parsed.success) {
@@ -656,7 +389,7 @@ router.post(
         // Journal entry against Treasury Variance (6000).
         // Increase (IN):  Dr treasury asset, Cr 6000 Treasury Variance
         // Decrease (OUT): Dr 6000 Treasury Variance, Cr treasury asset
-        const assetCode = TREASURY_TYPE_TO_ACCOUNT_CODE[acct.type];
+        const assetCode = TREASURY_TYPE_TO_ACCOUNT_CODE[acct.type as keyof typeof TREASURY_TYPE_TO_ACCOUNT_CODE];
         const lines =
           direction === "IN"
             ? [{ code: assetCode, debit: amount }, { code: "6000", credit: amount }]

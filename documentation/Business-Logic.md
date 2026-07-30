@@ -9,6 +9,7 @@
 The business logic layer sits between Express route handlers and the Drizzle ORM. Rather than performing complex operations directly in route callbacks, the API delegates to service functions in `src/lib/`. This keeps route files focused on HTTP concerns (validation, serialization, error handling) while services handle atomicity, consistency, and domain rules.
 
 The core services are:
+- **`shift.ts`** — configurable operational day boundary computation
 - **`accounting.ts`** — double-entry journal entry posting
 - **`treasury.ts`** — treasury account balance tracking
 - **`inventory.ts`** — inventory stock movement tracking
@@ -16,6 +17,31 @@ The core services are:
 - **`seed.ts`** — chart of accounts and treasury account initialization
 - **`money.ts`** — safe monetary arithmetic
 - **`audit.ts`** — audit log writing
+
+---
+
+## Shift Service (`lib/shift.ts`)
+
+Provides configurable operational day boundary calculations. The shift hour (0–23) is stored in `store_settings.shift_start_hour` (default: 11 AM) and cached in memory for 60 seconds per store.
+
+### `getShiftStartHour(storeId: string): Promise<number>`
+Reads `shift_start_hour` from the database with a 1-minute in-memory TTL cache. Returns `11` as fallback if not set.
+
+### `invalidateShiftHourCache(storeId: string): void`
+Force-evicts the cached shift hour for a store. Called by `PATCH /settings` after saving a new `shiftStartHour`.
+
+### `computeShiftStart(shiftStartHour: number, now?: Date): Date`
+Returns the start of the current operational day at `shiftStartHour:00:00`.
+- If the current time is **before** `shiftStartHour`, it returns yesterday at `shiftStartHour:00:00` (we are in the "tail" of the previous operational day).
+
+### `computeShiftEnd(shiftStartHour: number, now?: Date): Date`
+Returns `computeShiftStart() + 24h - 1ms` — the last millisecond of the current operational day.
+
+### `isInCurrentShift(shiftStartHour: number, ts: Date, now?: Date): boolean`
+Returns `true` if `ts` falls between `computeShiftStart()` and `computeShiftEnd()`.
+
+### `buildShiftDayRanges(shiftStartHour, fromDate, toDate?): Array<{label, start, end}>`
+Builds an array of operational-day-aligned `{start, end}` date pairs over a date range. Used by chart queries to group by operational day without SQL offset hacks.
 
 ---
 
@@ -99,13 +125,14 @@ The atomic function for updating a treasury account balance and creating the imm
 interface TreasuryTransactionParams {
   storeId: string;
   treasuryAccountId: string;
-  sessionId?: string;
+  operationalDayId?: string;  // links to the cashier's open operational day
   direction: "IN" | "OUT";
   amount: number;              // integer cents
   referenceType: string;
   referenceId: string;
   description?: string;
-  createdBy?: string;
+  userId?: string;
+  allowNegative?: boolean;     // permits balance going below 0 (used at day close)
 }
 ```
 
@@ -118,9 +145,9 @@ interface TreasuryTransactionParams {
 
 The function accepts an optional `db` parameter for nested transactions — callers can pass a transaction-scoped `db` instance so the treasury update is included in the parent transaction.
 
-### `resolveBackdatedTreasuryAccount(storeId, accountId, db)`
+### `resolveBackdatedTreasuryAccount(storeId, accountId, userId, db)`
 
-Handles the case where a treasury transaction references an account that was linked to a closed session. If the specified account has an open session, returns it unchanged. If the session is closed or there is no session, returns the `MAIN_SAFE` account ID instead. This ensures backdated or after-hours transactions go to the main safe rather than the daily cash drawer.
+Handles the case where a transaction is posted to a cashier's CASH account but the timestamp falls before the current shift start. If the transaction is backdated (before `computeShiftStart(shiftHour)`), it returns the `MAIN_SAFE` account ID instead. This ensures backdated or after-hours transactions go to the main safe rather than an individual cashier's drawer.
 
 ---
 
@@ -198,15 +225,21 @@ Invoice barcodes are a separate number sequence using `INVOICE_BARCODE` kind wit
 
 Idempotent initialization of all required financial infrastructure. Called:
 - At setup wizard completion
-- At the start of every `GET /api/treasury/accounts` request (lazy init)
+- When opening an operational day
 
 **What it seeds (all using `INSERT ... ON CONFLICT DO NOTHING`):**
 
 1. **Chart of accounts** — all 18 default accounts (see Database.md)
-2. **Treasury drawers** — 5 drawers: CASH, MAIN_SAFE, CARD, INSTAPAY, WALLET
+2. **MAIN_SAFE treasury account** — store-level, `user_id = NULL`
 3. **Number sequences** — one row per document kind
 
-This makes the system resilient: if a new document kind is added in the future, the first request to use it automatically provisions its sequence row.
+### `ensureCashierAccounts(db, storeId, userId)`
+
+Idempotent provisioning of a cashier's personal treasury accounts (CASH, CARD, INSTAPAY, WALLET) with `user_id = userId`. Called:
+- When a cashier opens an operational day
+- Before any sale, expense, or purchase payment is posted (lazy provisioning)
+
+Uses `INSERT ... ON CONFLICT DO NOTHING` so repeated calls are safe.
 
 ### `TREASURY_TYPE_TO_ACCOUNT_CODE`
 
@@ -273,7 +306,8 @@ The `action` namespace convention is `entity.verb`, e.g.:
 - `advance.create`
 - `equity.create`
 - `inventory.adjustment`, `inventory.transfer`, `inventory.stock_count`
-- `treasury.session.open`, `treasury.session.close`, `treasury.transfer`, `treasury.adjustment`
+- `treasury.operational_day_opened`, `treasury.operational_day_closed`
+- `treasury.transfer`, `treasury.adjustment`
 - `customer.create`, `customer.update`, `customer.payment`
 - `supplier.payment`
 - `product.create`, `product.update`
@@ -310,11 +344,14 @@ Key methods:
 | `getSalesByPaymentMethod(storeId)` | Revenue breakdown by payment type |
 | `getSalesByCategory(storeId)` | Revenue breakdown by category |
 
-**Shift-adjusted date expressions**: All date-grouped queries in this service use:
-```sql
-strftime('%Y-%m-%d', datetime((created_at / 1000) - 39600, 'unixepoch'))
+**Shift-adjusted date boundaries**: All date-range queries in this service use app-layer boundaries:
+```typescript
+const shiftHour = await getShiftStartHour(storeId);
+const from = computeShiftStart(shiftHour, startDate);
+const to   = computeShiftEnd(shiftHour, endDate);
+// Then: gte(table.createdAt, from) AND lte(table.createdAt, to)
 ```
-The `-39600` seconds (-11 hours) aligns with the 11:00 AM shift boundary.
+This replaces the old SQL `-39600` offset approach, making the boundary fully configurable via settings.
 
 ---
 

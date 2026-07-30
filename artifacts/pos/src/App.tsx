@@ -156,7 +156,7 @@ function AuthenticatedApp() {
           </PermissionGate>
         </Route>
         <Route path="/treasury">
-          <PermissionGate anyOf={["treasury.view", "treasury.session", "treasury.manage"]}>
+          <PermissionGate anyOf={["treasury.view", "treasury.session", "treasury.view_all"]}>
             <TreasuryPage />
           </PermissionGate>
         </Route>

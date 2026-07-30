@@ -22,6 +22,8 @@ export const storeSettingsTable = sqliteTable(
     allowBelowCostDiscount: integer("allow_below_cost_discount", { mode: 'boolean' }).notNull().default(false),
     allowNegativeTreasury: integer("allow_negative_treasury", { mode: 'boolean' }).notNull().default(false),
     requireSessionForCash: integer("require_session_for_cash", { mode: 'boolean' }).notNull().default(true),
+    // Hour (0-23) at which the operational day starts. Default 11 = 11:00 AM.
+    shiftStartHour: integer("shift_start_hour").notNull().default(11),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().defaultNow(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .notNull()

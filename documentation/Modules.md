@@ -292,33 +292,37 @@ Supplier management and payables tracking.
 ## 16. Treasury (`/treasury`)
 
 **UI page**: `pages/treasury.tsx`  
-**Permission**: `treasury.view`, `treasury.session`, or `treasury.manage`
+**Permission**: `treasury.view`, `treasury.session`
 
-Cash and payment channel management.
+Cash and payment channel management. The treasury page adapts its view based on the user's role.
 
-### Features
+### Cashier View
+- Shows the cashier's own 4 sub-treasury accounts (CASH, CARD, INSTAPAY, WALLET) with current balances
+- Displays current operational day status (OPEN / CLOSED)
+- **Open Day** button — opens modal to enter opening cash carry-over amount and notes
+- **Close Day** button — opens modal to enter:
+  - Actual cash count
+  - Carry-over amount (how much cash to keep in drawer)
+  - Notes
+- Shows today's transactions summary per account
 
-**Accounts tab:**
-- Shows all active treasury accounts (CASH, CARD, INSTAPAY, WALLET, MAIN_SAFE if permitted) with current balances
-- MAIN_SAFE is hidden from users without `treasury.manage` permission
-
-**Sessions tab:**
-- Open a shift session for the CASH drawer with an opening balance
-- View current session's transactions and running balance
-- Close session: enter the physically counted cash; system shows expected vs actual and variance
-- History of past sessions
+### Manager View (requires `treasury.view_all`)
+- Shows all cashiers' sub-treasury accounts grouped by cashier
+- Each cashier's operational day status (OPEN / CLOSED) is visible
+- **MAIN_SAFE** balance shown prominently (requires `treasury.main_safe`)
+- Manager can close another cashier's operational day (requires `treasury.close_others`)
+- Historical operational days list with variance tracking
 
 **Transactions tab:**
 - Full transaction ledger across all accounts
 - Filter by account, direction (IN/OUT), reference type, date range
 
-**Transfers tab:**
-- Move money between accounts (e.g., Cash → Main Safe at end of day)
+**Transfers tab (requires `treasury.transfer`):**
+- Move money between accounts (e.g., Cash → Main Safe)
 - Creates a TRANSFER_OUT on the source and TRANSFER_IN on the destination
 
-**Adjustments tab:**
+**Adjustments tab (requires `treasury.adjustment`):**
 - Manual correction of a treasury account balance
-- Requires `treasury.manage` permission
 - Posts both a treasury transaction and a journal entry to Treasury Variance (6000)
 
 ---
@@ -488,7 +492,11 @@ Store configuration.
 - Allow negative stock
 - Allow selling below cost price
 - Allow negative treasury balance
-- Require open session for cash sales
+- Require open operational day for cash sales
+
+**Operational Day Settings** (requires `settings.manage`):
+- **Shift Start Hour** — hour (0–23) at which the operational day starts (default: 11 AM)
+- Changing this hour immediately affects all KPI "today" windows and day-boundary validation
 
 **Printer Settings** (Desktop only):
 - Select default printer and paper size

@@ -21,6 +21,7 @@ import settingsRouter from "./settings";
 import notificationsRouter from "./notifications";
 import inventoryOpsRouter from "./inventory-ops";
 import associationsRouter from "./associations";
+import operatingDaysRouter from "./operating-days";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(settingsRouter);
 router.use(notificationsRouter);
 router.use(inventoryOpsRouter);
 router.use(associationsRouter);
+router.use(operatingDaysRouter);
 
 export default router;

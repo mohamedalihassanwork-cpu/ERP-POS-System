@@ -107,6 +107,7 @@ type StoreForm = {
   allowBelowCostDiscount: boolean;
   allowNegativeTreasury: boolean;
   requireSessionForCash: boolean;
+  shiftStartHour: number;
 };
 
 function settingsToForm(s: StoreSettings): StoreForm {
@@ -122,6 +123,7 @@ function settingsToForm(s: StoreSettings): StoreForm {
     allowBelowCostDiscount: s.allowBelowCostDiscount,
     allowNegativeTreasury: s.allowNegativeTreasury,
     requireSessionForCash: s.requireSessionForCash,
+    shiftStartHour: (s as any).shiftStartHour ?? 11,
   };
 }
 
@@ -212,6 +214,7 @@ function StoreSettingsTab({ canManage }: { canManage: boolean }) {
           allowBelowCostDiscount: form.allowBelowCostDiscount,
           allowNegativeTreasury: form.allowNegativeTreasury,
           requireSessionForCash: form.requireSessionForCash,
+          shiftStartHour: form.shiftStartHour,
         },
       });
       void queryClient.invalidateQueries({
@@ -370,6 +373,29 @@ function StoreSettingsTab({ canManage }: { canManage: boolean }) {
           disabled={!canManage}
           testId="toggle-require-session"
         />
+
+        {/* Shift start hour */}
+        <div className="flex items-start justify-between gap-4 p-4 rounded-xl border border-slate-100">
+          <div className="min-w-0">
+            <p className="font-bold text-slate-700 text-sm">وقت بداية الوردية</p>
+            <p className="text-xs text-slate-400 mt-0.5">
+              ساعة بداية اليوم التشغيلي (بالتوقيت المحلي). المبيعات قبل هذه الساعة تُحتسب ضمن اليوم السابق.
+            </p>
+          </div>
+          <select
+            className="px-3 py-2 rounded-xl border border-slate-200 focus:border-amber-500 outline-none transition text-sm font-bold text-slate-700 bg-white shrink-0"
+            value={form.shiftStartHour}
+            disabled={!canManage}
+            onChange={(e) => set("shiftStartHour", Number(e.target.value))}
+            data-testid="select-shift-start-hour"
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>
+                {String(h).padStart(2, "0")}:00
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {error && (

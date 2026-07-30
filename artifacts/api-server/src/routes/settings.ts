@@ -3,6 +3,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db, numberSequencesTable, storeSettingsTable, storesTable } from "@workspace/db";
 import { UpdateNumberSequenceBody, UpdateStoreSettingsBody } from "@workspace/api-zod";
 import { writeAuditLog } from "../lib/audit";
+import { invalidateShiftHourCache } from "../lib/shift";
 import { requireAuth, requirePermission } from "../middleware/auth";
 
 const router: IRouter = Router();
@@ -49,6 +50,7 @@ async function serializeSettings(
     allowBelowCostDiscount: row.allowBelowCostDiscount,
     allowNegativeTreasury: row.allowNegativeTreasury,
     requireSessionForCash: row.requireSessionForCash,
+    shiftStartHour: row.shiftStartHour,
   };
 }
 
@@ -85,6 +87,14 @@ router.patch("/settings", requireAuth, requirePermission("settings.manage"), asy
     update.allowNegativeTreasury = body.allowNegativeTreasury;
   if (body.requireSessionForCash !== undefined)
     update.requireSessionForCash = body.requireSessionForCash;
+  if (body.shiftStartHour !== undefined) {
+    const h = Number(body.shiftStartHour);
+    if (h >= 0 && h <= 23) {
+      update.shiftStartHour = h;
+      // Invalidate the cached shift hour so the next request re-reads the new value
+      invalidateShiftHourCache(storeId);
+    }
+  }
 
   // logoUrl is stored on the stores table (tenant root), not store_settings.
   if ((body as any).logoUrl !== undefined) {

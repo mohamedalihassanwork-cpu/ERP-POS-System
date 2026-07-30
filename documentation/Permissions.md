@@ -96,9 +96,13 @@ Organized by `PERMISSION_GROUPS` (from `lib/shared/src/permissions.ts`):
 ### Treasury (`الخزينة`)
 | Permission | Description |
 |-----------|-------------|
-| `treasury.view` | View treasury transactions and sessions |
-| `treasury.session` | Open and close treasury sessions |
-| `treasury.manage` | Full treasury access: transfers, adjustments, MAIN_SAFE visibility |
+| `treasury.view` | View own treasury accounts and transactions |
+| `treasury.view_all` | View treasury accounts and operational days for **all** cashiers |
+| `treasury.session` | Open and close **your own** operational day |
+| `treasury.transfer` | Transfer money between treasury accounts |
+| `treasury.adjustment` | Post manual treasury balance adjustments |
+| `treasury.main_safe` | View and access the MAIN_SAFE account |
+| `treasury.close_others` | Close another cashier's operational day |
 
 ### Finance (`المالية`)
 | Permission | Description |
@@ -175,19 +179,19 @@ Seeded during the setup wizard. Defined in `lib/shared/src/roles.ts`.
 ### Manager (`مدير`)
 - `is_system: true`
 - Permissions:
-  - `sales.*` (create, view, return)
-  - `purchases.*` (create, view, edit, return, payment)
-  - `inventory.*` (view, manage, adjust, transfer, count)
+  - `dashboard.*` (view, view_sales, view_profits, view_treasury_total, view_stock, view_associations)
+  - `sales.*` (create, view, return, delete)
+  - `purchases.*` (create, view, edit, delete, return)
   - `products.*` (view, create, edit, delete)
-  - `customers.*` (view, create, edit, delete, payment)
-  - `suppliers.*` (view, create, edit, delete, payment)
-  - `treasury.*` (view, session, manage)
-  - `finance.*` + all sub-permissions
+  - `inventory.view`, `inventory.manage`
+  - `customers.*` (view, create, edit, delete)
+  - `suppliers.*` (view, create, edit, delete)
+  - `finance.*` (view, manage, delete), `expenses.create`
+  - `treasury.view`, `treasury.view_all`, `treasury.session`, `treasury.transfer`, `treasury.adjustment`, `treasury.main_safe`, `treasury.close_others`
   - `associations.*`
-  - `reports.*` (all sub-permissions)
+  - `reports.view`, `reports.sales`, `reports.inventory`
   - `users.view`
   - `roles.view`
-  - `audit.view`
   - `settings.view`
 
 ---
@@ -195,12 +199,16 @@ Seeded during the setup wizard. Defined in `lib/shared/src/roles.ts`.
 ### Cashier (`كاشير`)
 - `is_system: true`
 - Permissions:
-  - `sales.create`, `sales.view`, `sales.return`
+  - `dashboard.view`, `dashboard.view_sales`
+  - `sales.create`, `sales.view_own`, `sales.return`
   - `customers.view`, `customers.create`, `customers.payment`
   - `products.view`
   - `inventory.view`
   - `treasury.view`, `treasury.session`
-  - `reports.view`, `reports.sales`
+  - `expenses.create`
+  - `reports.sales`
+
+> **Note**: Cashiers do **not** have `treasury.transfer`, `treasury.adjustment`, or `treasury.main_safe`. They can only open/close their own operational day.
 
 ---
 
@@ -218,16 +226,16 @@ Seeded during the setup wizard. Defined in `lib/shared/src/roles.ts`.
 ### Accountant (`محاسب`)
 - `is_system: true`
 - Permissions:
+  - `dashboard.view`, `dashboard.view_sales`, `dashboard.view_profits`, `dashboard.view_treasury_total`, `dashboard.view_stock`
   - `sales.view`
   - `purchases.view`
-  - `treasury.view`, `treasury.manage`
-  - `finance.*`
-  - `expenses.create`, `salaries.create`, `advances.create`, `equity.create`
-  - `reports.view`, `reports.sales`, `reports.purchases`, `reports.inventory`, `reports.finance`, `reports.treasury`, `reports.customers`, `reports.suppliers`
-  - `customers.view`
-  - `suppliers.view`
-  - `audit.view`
-  - `settings.view`
+  - `products.view`
+  - `inventory.view`
+  - `customers.*` (view, create, edit, delete)
+  - `suppliers.*` (view, create, edit, delete)
+  - `finance.view`, `finance.manage`
+  - `treasury.view`, `treasury.view_all`, `treasury.transfer`, `treasury.adjustment`, `treasury.main_safe`
+  - `reports.view`, `reports.sales`, `reports.inventory`
 
 ---
 

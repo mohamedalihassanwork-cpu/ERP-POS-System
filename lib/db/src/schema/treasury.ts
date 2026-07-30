@@ -3,7 +3,9 @@ import { integer, index, text, sqliteTable, uniqueIndex } from "drizzle-orm/sqli
 import { storesTable } from "./stores";
 import { usersTable } from "./users";
 
-// The kinds of money "drawers" a store keeps. One account per type per store.
+// The kinds of money "drawers" a store keeps.
+// MAIN_SAFE: store-level (user_id = NULL)
+// CASH, CARD, INSTAPAY, WALLET: per-cashier (user_id = cashier's user ID)
 export const treasuryAccountTypeEnum = [
   "CASH",
   "CARD",
@@ -32,12 +34,16 @@ export const treasuryRefTypeEnum = [
   "OPENING",
   "TRANSFER",
   "ADJUSTMENT",
+  "DAY_CLOSE_RESET",
+  "DAY_OPEN_CARRY",
 ] as const;
 
-export const treasurySessionStatusEnum = ["OPEN", "CLOSED"] as const;
+export const operationalDayStatusEnum = ["OPEN", "CLOSED"] as const;
 
 // A money drawer with a cached running balance. Every money movement in the
 // whole system funnels through a treasury_transactions row against one of these.
+// user_id is NULL for the store-level MAIN_SAFE; set to a cashier's user ID
+// for their personal CASH/CARD/INSTAPAY/WALLET drawers.
 export const treasuryAccountsTable = sqliteTable(
   "treasury_accounts",
   {
@@ -45,6 +51,7 @@ export const treasuryAccountsTable = sqliteTable(
     storeId: text("store_id")
       .notNull()
       .references(() => storesTable.id, { onDelete: "restrict" }),
+    userId: text("user_id").references(() => usersTable.id, { onDelete: "restrict" }),
     type: text("type", { enum: treasuryAccountTypeEnum }).notNull(),
     name: text("name").notNull(),
     balance: text("balance").notNull().default("0"),
@@ -55,35 +62,15 @@ export const treasuryAccountsTable = sqliteTable(
       .defaultNow()
       .$onUpdate(() => new Date()),
   },
-  (table) => [uniqueIndex("treasury_accounts_store_type_unique").on(table.storeId, table.type)],
-);
-
-// A daily cash-management shift. Opened with a counted opening balance; closed
-// with a counted actual balance, recording any variance vs. the expected total.
-export const treasurySessionsTable = sqliteTable(
-  "treasury_sessions",
-  {
-    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-    storeId: text("store_id")
-      .notNull()
-      .references(() => storesTable.id, { onDelete: "restrict" }),
-    treasuryAccountId: text("treasury_account_id")
-      .notNull()
-      .references(() => treasuryAccountsTable.id, { onDelete: "restrict" }),
-    status: text("status", { enum: treasurySessionStatusEnum }).notNull().default("OPEN"),
-    openingBalance: text("opening_balance").notNull().default("0"),
-    expectedClosingBalance: text("expected_closing_balance"),
-    actualClosingBalance: text("actual_closing_balance"),
-    variance: text("variance"),
-    notes: text("notes"),
-    openedBy: text("opened_by").references(() => usersTable.id, { onDelete: "restrict" }),
-    closedBy: text("closed_by").references(() => usersTable.id, { onDelete: "restrict" }),
-    openedAt: integer("opened_at", { mode: "timestamp_ms" }).notNull().defaultNow(),
-    closedAt: integer("closed_at", { mode: "timestamp_ms" }),
-  },
   (table) => [
-    index("treasury_sessions_account_idx").on(table.treasuryAccountId, table.status),
-    index("treasury_sessions_store_idx").on(table.storeId),
+    // UNIQUE per (store, type, user_id). SQLite treats each NULL as distinct so
+    // the store-level MAIN_SAFE (userId=NULL) won't collide with cashier rows,
+    // and two different cashiers get separate sets of CASH/CARD/INSTAPAY/WALLET.
+    // This constraint is what makes ensureCashierAccounts idempotent via
+    // onConflictDoNothing — without UNIQUE the insert would silently create
+    // duplicate rows every time (the original bug).
+    uniqueIndex("treasury_accounts_store_type_user_idx").on(table.storeId, table.type, table.userId),
+    index("treasury_accounts_store_user_idx").on(table.storeId, table.userId),
   ],
 );
 
@@ -99,7 +86,7 @@ export const treasuryTransactionsTable = sqliteTable(
     treasuryAccountId: text("treasury_account_id")
       .notNull()
       .references(() => treasuryAccountsTable.id, { onDelete: "restrict" }),
-    sessionId: text("session_id").references(() => treasurySessionsTable.id, { onDelete: "restrict" }),
+    operationalDayId: text("operational_day_id"),
     direction: text("direction", { enum: treasuryTxDirectionEnum }).notNull(),
     amount: text("amount").notNull(),
     balanceAfter: text("balance_after").notNull(),
@@ -113,6 +100,7 @@ export const treasuryTransactionsTable = sqliteTable(
     index("treasury_tx_account_idx").on(table.treasuryAccountId, table.createdAt),
     index("treasury_tx_store_created_idx").on(table.storeId, table.createdAt),
     index("treasury_tx_reference_idx").on(table.referenceId, table.referenceType),
+    index("treasury_tx_opday_idx").on(table.operationalDayId),
   ],
 );
 
@@ -164,13 +152,78 @@ export const treasuryAdjustmentsTable = sqliteTable(
   ],
 );
 
+// Formal operational day per cashier. Replaces the old treasury_sessions concept
+// for CASH accounts. Each cashier opens one operational day per shift.
+export const operationalDaysTable = sqliteTable(
+  "operational_days",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    storeId: text("store_id")
+      .notNull()
+      .references(() => storesTable.id, { onDelete: "restrict" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    status: text("status", { enum: operationalDayStatusEnum }).notNull().default("OPEN"),
+    openedAt: integer("opened_at", { mode: "timestamp_ms" }).notNull().defaultNow(),
+    closedAt: integer("closed_at", { mode: "timestamp_ms" }),
+    // CASH drawer figures
+    openingCashBalance: text("opening_cash_balance").notNull().default("0"),
+    carryOverCash: text("carry_over_cash").notNull().default("0"),
+    actualClosingCashBalance: text("actual_closing_cash_balance"),
+    expectedClosingCashBalance: text("expected_closing_cash_balance"),
+    cashVariance: text("cash_variance"),
+    // Totals for all 4 cashier accounts (computed at close)
+    totalTransferredToMainSafe: text("total_transferred_to_main_safe").notNull().default("0"),
+    notes: text("notes"),
+    openedBy: text("opened_by")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    closedBy: text("closed_by").references(() => usersTable.id, { onDelete: "restrict" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("op_days_store_user_idx").on(table.storeId, table.userId),
+    index("op_days_store_status_idx").on(table.storeId, table.status),
+    index("op_days_store_created_idx").on(table.storeId, table.createdAt),
+  ],
+);
+
+// Balance snapshot for each of the cashier's 4 accounts at day open/close.
+export const cashierBalanceSnapshotsTable = sqliteTable(
+  "cashier_balance_snapshots",
+  {
+    id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    storeId: text("store_id")
+      .notNull()
+      .references(() => storesTable.id, { onDelete: "restrict" }),
+    operationalDayId: text("operational_day_id")
+      .notNull()
+      .references(() => operationalDaysTable.id, { onDelete: "restrict" }),
+    treasuryAccountId: text("treasury_account_id")
+      .notNull()
+      .references(() => treasuryAccountsTable.id, { onDelete: "restrict" }),
+    snapshotType: text("snapshot_type", { enum: ["OPENING", "CLOSING"] }).notNull(),
+    balance: text("balance").notNull().default("0"),
+    totalIn: text("total_in").notNull().default("0"),
+    totalOut: text("total_out").notNull().default("0"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("balance_snapshots_opday_idx").on(table.operationalDayId),
+    index("balance_snapshots_account_idx").on(table.treasuryAccountId),
+  ],
+);
+
 export type TreasuryAccount = typeof treasuryAccountsTable.$inferSelect;
 export type InsertTreasuryAccount = typeof treasuryAccountsTable.$inferInsert;
-export type TreasurySession = typeof treasurySessionsTable.$inferSelect;
-export type InsertTreasurySession = typeof treasurySessionsTable.$inferInsert;
 export type TreasuryTransaction = typeof treasuryTransactionsTable.$inferSelect;
 export type InsertTreasuryTransaction = typeof treasuryTransactionsTable.$inferInsert;
 export type TreasuryTransfer = typeof treasuryTransfersTable.$inferSelect;
 export type InsertTreasuryTransfer = typeof treasuryTransfersTable.$inferInsert;
 export type TreasuryAdjustment = typeof treasuryAdjustmentsTable.$inferSelect;
 export type InsertTreasuryAdjustment = typeof treasuryAdjustmentsTable.$inferInsert;
+export type OperationalDay = typeof operationalDaysTable.$inferSelect;
+export type InsertOperationalDay = typeof operationalDaysTable.$inferInsert;
+export type CashierBalanceSnapshot = typeof cashierBalanceSnapshotsTable.$inferSelect;
+export type InsertCashierBalanceSnapshot = typeof cashierBalanceSnapshotsTable.$inferInsert;

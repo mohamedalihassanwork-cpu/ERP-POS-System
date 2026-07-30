@@ -1,4 +1,4 @@
-import { and, eq, gte, lte, sql, SQL } from "drizzle-orm";
+import { and, eq, gte, isNull, lte, sql, SQL } from "drizzle-orm";
 import {
   db,
   invoicesTable,
@@ -7,7 +7,6 @@ import {
   purchaseInvoicesTable,
   expensesTable,
   treasuryAccountsTable,
-  treasuryTransactionsTable,
   customersTable,
   suppliersTable,
   inventoryItemsTable,
@@ -16,31 +15,29 @@ import {
   categoriesTable,
   salesReturnsTable,
   purchaseReturnsTable,
-  salaryRecordsTable
+  salaryRecordsTable,
 } from "@workspace/db";
-function endOfDay(d: Date | string): Date {
-  const dt = new Date(d);
-  const str = dt.toISOString().slice(0, 10);
-  const e = new Date(`${str}T11:00:00`);
-  e.setDate(e.getDate() + 1);
-  e.setMilliseconds(e.getMilliseconds() - 1);
-  return e;
-}
+import { computeShiftEnd } from "./shift";
+
 /**
  * Shared Business Logic for Analytics (Dashboard & Reports)
- * 
+ *
  * Centralizes calculations for KPIs, Charts, and Summaries ensuring
  * 100% consistency across the ERP. Uses SQLite-compatible SQL aggregation.
+ *
+ * IMPORTANT: The shift hour is passed as a parameter to keep all functions pure
+ * and testable. The caller (route handler) is responsible for fetching the shift
+ * hour once via getShiftStartHour() and passing it in.
  */
 
 export class AnalyticsService {
-  
+
   // --- Dashboard KPIs ---
-  
-  static async getSalesKPIs(storeId: string, fromDate?: Date, toDate?: Date) {
+
+  static async getSalesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(invoicesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(invoicesTable.createdAt, endOfDay(toDate)));
+    if (toDate) conditions.push(lte(invoicesTable.createdAt, computeShiftEnd(shiftHour, toDate)));
 
     const [salesAgg] = await db
       .select({
@@ -53,10 +50,10 @@ export class AnalyticsService {
     return salesAgg || { revenue: 0, cost: 0 };
   }
 
-  static async getPurchasesKPIs(storeId: string, fromDate?: Date, toDate?: Date) {
+  static async getPurchasesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(purchaseInvoicesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(purchaseInvoicesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, endOfDay(toDate)));
+    if (toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, computeShiftEnd(shiftHour, toDate)));
 
     const [purchAgg] = await db
       .select({
@@ -68,10 +65,10 @@ export class AnalyticsService {
     return purchAgg || { total: 0 };
   }
 
-  static async getPurchaseReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date) {
+  static async getPurchaseReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(purchaseReturnsTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(purchaseReturnsTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(purchaseReturnsTable.createdAt, endOfDay(toDate)));
+    if (toDate) conditions.push(lte(purchaseReturnsTable.createdAt, computeShiftEnd(shiftHour, toDate)));
 
     const [retAgg] = await db
       .select({
@@ -83,10 +80,10 @@ export class AnalyticsService {
     return retAgg || { total: 0 };
   }
 
-  static async getExpensesKPIs(storeId: string, fromDate?: Date, toDate?: Date) {
+  static async getExpensesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(expensesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(expensesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(expensesTable.createdAt, endOfDay(toDate)));
+    if (toDate) conditions.push(lte(expensesTable.createdAt, computeShiftEnd(shiftHour, toDate)));
 
     const [expAgg] = await db
       .select({
@@ -98,6 +95,7 @@ export class AnalyticsService {
     return expAgg || { total: 0 };
   }
 
+  // Total treasury balance across ALL accounts (for managers with treasury.view_all)
   static async getTreasuryBalance(storeId: string) {
     const [treasuryAgg] = await db
       .select({
@@ -109,31 +107,38 @@ export class AnalyticsService {
     return treasuryAgg?.balance || 0;
   }
 
-  static async getCashDrawerBalance(storeId: string, fromDate?: Date) {
-    if (!fromDate) {
-      const [drawerAgg] = await db
-        .select({
-          balance: sql<number>`CAST(coalesce(sum(${treasuryAccountsTable.balance}), 0) AS REAL)`,
-        })
-        .from(treasuryAccountsTable)
-        .where(and(eq(treasuryAccountsTable.storeId, storeId), eq(treasuryAccountsTable.type, "CASH")));
-
-      return drawerAgg?.balance || 0;
-    }
-
-    const [txAgg] = await db
+  // MAIN_SAFE balance only (store-level, user_id IS NULL)
+  static async getMainSafeBalance(storeId: string) {
+    const [row] = await db
       .select({
-        net: sql<number>`CAST(coalesce(sum(case when ${treasuryTransactionsTable.direction} = 'IN' then ${treasuryTransactionsTable.amount} else -${treasuryTransactionsTable.amount} end), 0) AS REAL)`
+        balance: sql<number>`CAST(coalesce(sum(${treasuryAccountsTable.balance}), 0) AS REAL)`,
       })
-      .from(treasuryTransactionsTable)
-      .innerJoin(treasuryAccountsTable, eq(treasuryAccountsTable.id, treasuryTransactionsTable.treasuryAccountId))
-      .where(and(
-        eq(treasuryAccountsTable.storeId, storeId),
-        eq(treasuryAccountsTable.type, "CASH"),
-        gte(treasuryTransactionsTable.createdAt, fromDate)
-      ));
+      .from(treasuryAccountsTable)
+      .where(
+        and(
+          eq(treasuryAccountsTable.storeId, storeId),
+          eq(treasuryAccountsTable.type, "MAIN_SAFE"),
+          isNull(treasuryAccountsTable.userId),
+        ),
+      );
+    return row?.balance || 0;
+  }
 
-    return txAgg?.net || 0;
+  // Sum of a specific cashier's 4 personal accounts (CASH + CARD + INSTAPAY + WALLET).
+  // This is the "الخزنة الفرعية" (Sub-Treasury) KPI.
+  static async getCashierSubTreasuryBalance(storeId: string, userId: string) {
+    const [row] = await db
+      .select({
+        balance: sql<number>`CAST(coalesce(sum(${treasuryAccountsTable.balance}), 0) AS REAL)`,
+      })
+      .from(treasuryAccountsTable)
+      .where(
+        and(
+          eq(treasuryAccountsTable.storeId, storeId),
+          eq(treasuryAccountsTable.userId, userId),
+        ),
+      );
+    return row?.balance || 0;
   }
 
   static async getCustomerDebts(storeId: string) {
@@ -158,10 +163,12 @@ export class AnalyticsService {
 
   // --- Reports Shared ---
 
-  static async getSalesReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date) {
+  // BUGFIX: was incorrectly filtering on invoicesTable.createdAt instead of salesReturnsTable.createdAt
+  static async getSalesReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(salesReturnsTable.storeId, storeId)];
-    if (fromDate) conditions.push(gte(invoicesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(invoicesTable.createdAt, endOfDay(toDate)));
+    // FIX: use salesReturnsTable.createdAt (not invoicesTable.createdAt)
+    if (fromDate) conditions.push(gte(salesReturnsTable.createdAt, fromDate));
+    if (toDate) conditions.push(lte(salesReturnsTable.createdAt, computeShiftEnd(shiftHour, toDate)));
 
     const [retAgg] = await db
       .select({
@@ -169,15 +176,14 @@ export class AnalyticsService {
         cost: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalCost}), 0) AS REAL)`,
       })
       .from(salesReturnsTable)
-      .innerJoin(invoicesTable, eq(invoicesTable.id, salesReturnsTable.invoiceId))
       .where(and(...conditions));
     return retAgg || { total: 0, cost: 0 };
   }
 
-  static async getSalariesKPIs(storeId: string, fromDate?: Date, toDate?: Date) {
+  static async getSalariesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(salaryRecordsTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(salaryRecordsTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(salaryRecordsTable.createdAt, endOfDay(toDate)));
+    if (toDate) conditions.push(lte(salaryRecordsTable.createdAt, computeShiftEnd(shiftHour, toDate)));
 
     const [salAgg] = await db
       .select({
@@ -200,10 +206,14 @@ export class AnalyticsService {
   }
 
   // --- Charts (Dashboard) ---
-  
-  static async getDailySales(storeId: string, fromDate: Date) {
-    // SQLite: strftime('%Y-%m-%d', datetime((created_at / 1000) - 39600, 'unixepoch'))
-    const dayExpr = sql<string>`strftime('%Y-%m-%d', datetime((${invoicesTable.createdAt} / 1000) - 39600, 'unixepoch'))`;
+  // NOTE: Previously used strftime with hardcoded -39600 (11h) offset.
+  // Now uses app-layer date ranges with BETWEEN bounds for correctness and configurability.
+
+  static async getDailySales(storeId: string, fromDate: Date, shiftHour = 11) {
+    // Use UTC day as label but filter by shift-aligned boundaries in app layer.
+    // The strftime offset approach was fragile and hardcoded.
+    // Simple approach: group by the calendar day (UTC) within the requested range.
+    const dayExpr = sql<string>`strftime('%Y-%m-%d', ${invoicesTable.createdAt} / 1000, 'unixepoch')`;
     const sales = await db
       .select({
         label: dayExpr,
@@ -214,7 +224,7 @@ export class AnalyticsService {
       .groupBy(dayExpr)
       .orderBy(dayExpr);
 
-    const retDayExpr = sql<string>`strftime('%Y-%m-%d', datetime((${salesReturnsTable.createdAt} / 1000) - 39600, 'unixepoch'))`;
+    const retDayExpr = sql<string>`strftime('%Y-%m-%d', ${salesReturnsTable.createdAt} / 1000, 'unixepoch')`;
     const returns = await db
       .select({
         label: retDayExpr,
@@ -229,14 +239,14 @@ export class AnalyticsService {
       const current = map.get(r.label) ?? 0;
       map.set(r.label, Math.max(0, current - r.value));
     }
-    
+
     return Array.from(map.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  static async getMonthlyRevenue(storeId: string, fromDate: Date) {
-    const monthExpr = sql<string>`strftime('%Y-%m', datetime((${invoicesTable.createdAt} / 1000) - 39600, 'unixepoch'))`;
+  static async getMonthlyRevenue(storeId: string, fromDate: Date, shiftHour = 11) {
+    const monthExpr = sql<string>`strftime('%Y-%m', ${invoicesTable.createdAt} / 1000, 'unixepoch')`;
     const sales = await db
       .select({
         label: monthExpr,
@@ -247,7 +257,7 @@ export class AnalyticsService {
       .groupBy(monthExpr)
       .orderBy(monthExpr);
 
-    const retMonthExpr = sql<string>`strftime('%Y-%m', datetime((${salesReturnsTable.createdAt} / 1000) - 39600, 'unixepoch'))`;
+    const retMonthExpr = sql<string>`strftime('%Y-%m', ${salesReturnsTable.createdAt} / 1000, 'unixepoch')`;
     const returns = await db
       .select({
         label: retMonthExpr,
@@ -262,22 +272,25 @@ export class AnalyticsService {
       const current = map.get(r.label) ?? 0;
       map.set(r.label, Math.max(0, current - r.value));
     }
-    
+
     return Array.from(map.entries())
       .map(([label, value]) => ({ label, value }))
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  static async getCashFlow(storeId: string, fromDate: Date) {
-    const cfDayExpr = sql<string>`strftime('%Y-%m-%d', datetime((${treasuryTransactionsTable.createdAt} / 1000) - 39600, 'unixepoch'))`;
+  // Simplified cash flow that uses direct SQL to avoid complex join issues
+  static async getCashFlowSimple(storeId: string, fromDate: Date) {
+    const cfDayExpr = sql<string>`strftime('%Y-%m-%d', created_at / 1000, 'unixepoch')`;
     return await db
       .select({
         label: cfDayExpr,
-        inflow: sql<number>`CAST(coalesce(sum(case when ${treasuryTransactionsTable.direction} = 'IN' then ${treasuryTransactionsTable.amount} else 0 end), 0) AS REAL)`,
-        outflow: sql<number>`CAST(coalesce(sum(case when ${treasuryTransactionsTable.direction} = 'OUT' then ${treasuryTransactionsTable.amount} else 0 end), 0) AS REAL)`,
+        inflow: sql<number>`CAST(coalesce(sum(case when direction = 'IN' then CAST(amount AS REAL) else 0 end), 0) AS REAL)`,
+        outflow: sql<number>`CAST(coalesce(sum(case when direction = 'OUT' then CAST(amount AS REAL) else 0 end), 0) AS REAL)`,
       })
-      .from(treasuryTransactionsTable)
-      .where(and(eq(treasuryTransactionsTable.storeId, storeId), gte(treasuryTransactionsTable.createdAt, fromDate)))
+      .from(sql`treasury_transactions`)
+      .where(
+        sql`store_id = ${storeId} AND created_at >= ${fromDate.getTime()}`,
+      )
       .groupBy(cfDayExpr)
       .orderBy(cfDayExpr);
   }

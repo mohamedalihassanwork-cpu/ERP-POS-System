@@ -8,6 +8,7 @@ import {
   invoiceItemsTable,
   invoicePaymentsTable,
   invoicesTable,
+  operationalDaysTable,
   productsTable,
   productVariantsTable,
   salesReturnItemsTable,
@@ -30,7 +31,7 @@ import {
 } from "@workspace/api-zod";
 import { hasPermission } from "@workspace/shared";
 import { writeAuditLog } from "../lib/audit";
-import { ensureStoreFinancials, TREASURY_TYPE_TO_ACCOUNT_CODE } from "../lib/seed";
+import { ensureStoreFinancials, resolveTreasuryAccount, TREASURY_TYPE_TO_ACCOUNT_CODE } from "../lib/seed";
 import { postTreasuryTransaction, resolveBackdatedTreasuryAccount } from "../lib/treasury";
 import { postJournalEntry } from "../lib/accounting";
 import { postInventoryMovement } from "../lib/inventory";
@@ -356,6 +357,41 @@ router.post("/sales/invoices", requireAuth, requirePermission("sales.create"), a
 
   await ensureStoreFinancials(db, storeId);
 
+  // ── Operational-day session gate ────────────────────────────────────────
+  // When requireSessionForCash is enabled, a cashier must have an open
+  // operational day before making any cash (non-credit) sale.
+  const hasCashPayment = nonCredit.some((p) => p.method === "CASH");
+  if (hasCashPayment) {
+    const [settings] = await db
+      .select({ requireSessionForCash: storeSettingsTable.requireSessionForCash })
+      .from(storeSettingsTable)
+      .where(eq(storeSettingsTable.storeId, storeId))
+      .limit(1);
+
+    if (settings?.requireSessionForCash) {
+      const [openDay] = await db
+        .select({ id: operationalDaysTable.id })
+        .from(operationalDaysTable)
+        .where(
+          and(
+            eq(operationalDaysTable.storeId, storeId),
+            eq(operationalDaysTable.userId, userId),
+            eq(operationalDaysTable.status, "OPEN"),
+          ),
+        )
+        .limit(1);
+
+      if (!openDay) {
+        res.status(403).json({
+          error:
+            "يجب فتح يوم تشغيلي أولاً قبل إجراء مبيعات نقدية. اذهب إلى صفحة الخزينة وافتح يومك التشغيلي.",
+        });
+        return;
+      }
+    }
+  }
+  // ────────────────────────────────────────────────────────────────────────
+
   try {
     const invoiceId = await db.transaction(async (tx) => {
       // Validate warehouse.
@@ -516,18 +552,9 @@ router.post("/sales/invoices", requireAuth, requirePermission("sales.create"), a
         const drawerType = METHOD_TO_TREASURY_TYPE[p.method];
         let drawerId = p.treasuryAccountId ?? null;
         if (!drawerId) {
-          const [drawer] = await tx
-            .select({ id: treasuryAccountsTable.id })
-            .from(treasuryAccountsTable)
-            .where(
-              and(
-                eq(treasuryAccountsTable.storeId, storeId),
-                eq(treasuryAccountsTable.type, drawerType),
-              ),
-            )
-            .limit(1);
-          if (!drawer) throw new Error("TREASURY_ACCOUNT_NOT_FOUND");
-          drawerId = drawer.id;
+        // Look up the cashier's own account for this payment type
+        drawerId = await resolveTreasuryAccount(tx as any, storeId, drawerType, userId);
+        if (!drawerId) throw new Error("TREASURY_ACCOUNT_NOT_FOUND");
         }
         drawerId = await resolveBackdatedTreasuryAccount(tx, storeId, drawerId, createdAt, req.auth!.permissions);
         await tx.insert(invoicePaymentsTable).values({
@@ -866,18 +893,8 @@ router.post("/sales/returns", requireAuth, requirePermission("sales.return"), as
           drawerId = d.id;
           drawerCode = TREASURY_TYPE_TO_ACCOUNT_CODE[d.type];
         } else {
-          const [d] = await tx
-            .select({ id: treasuryAccountsTable.id })
-            .from(treasuryAccountsTable)
-            .where(
-              and(
-                eq(treasuryAccountsTable.storeId, storeId),
-                eq(treasuryAccountsTable.type, drawerType),
-              ),
-            )
-            .limit(1);
-          if (!d) throw new Error("TREASURY_ACCOUNT_NOT_FOUND");
-          drawerId = d.id;
+          // Look up the cashier's own account for this refund type
+          drawerId = await resolveTreasuryAccount(tx as any, storeId, drawerType, userId);
           drawerCode = TREASURY_TYPE_TO_ACCOUNT_CODE[drawerType];
         }
       }

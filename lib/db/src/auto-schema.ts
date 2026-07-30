@@ -256,6 +256,7 @@ CREATE INDEX IF NOT EXISTS \`supplier_tx_store_idx\` ON \`supplier_transactions\
 CREATE TABLE IF NOT EXISTS \`treasury_accounts\` (
 	\`id\` text PRIMARY KEY NOT NULL,
 	\`store_id\` text NOT NULL,
+	\`user_id\` text,
 	\`type\` text NOT NULL,
 	\`name\` text NOT NULL,
 	\`balance\` text DEFAULT '0' NOT NULL,
@@ -263,29 +264,13 @@ CREATE TABLE IF NOT EXISTS \`treasury_accounts\` (
 	\`created_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL,
 	\`updated_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS \`treasury_accounts_store_type_unique\` ON \`treasury_accounts\` (\`store_id\`,\`type\`);
-CREATE TABLE IF NOT EXISTS \`treasury_sessions\` (
-	\`id\` text PRIMARY KEY NOT NULL,
-	\`store_id\` text NOT NULL,
-	\`treasury_account_id\` text NOT NULL,
-	\`status\` text DEFAULT 'OPEN' NOT NULL,
-	\`opening_balance\` text DEFAULT '0' NOT NULL,
-	\`expected_closing_balance\` text,
-	\`actual_closing_balance\` text,
-	\`variance\` text,
-	\`notes\` text,
-	\`opened_by\` text,
-	\`closed_by\` text,
-	\`opened_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL,
-	\`closed_at\` integer
-);
-CREATE INDEX IF NOT EXISTS \`treasury_sessions_account_idx\` ON \`treasury_sessions\` (\`treasury_account_id\`,\`status\`);
-CREATE INDEX IF NOT EXISTS \`treasury_sessions_store_idx\` ON \`treasury_sessions\` (\`store_id\`);
+CREATE UNIQUE INDEX IF NOT EXISTS \`treasury_accounts_store_type_user_idx\` ON \`treasury_accounts\` (\`store_id\`,\`type\`,\`user_id\`);
+CREATE INDEX IF NOT EXISTS \`treasury_accounts_store_user_idx\` ON \`treasury_accounts\` (\`store_id\`,\`user_id\`);
 CREATE TABLE IF NOT EXISTS \`treasury_transactions\` (
 	\`id\` text PRIMARY KEY NOT NULL,
 	\`store_id\` text NOT NULL,
 	\`treasury_account_id\` text NOT NULL,
-	\`session_id\` text,
+	\`operational_day_id\` text,
 	\`direction\` text NOT NULL,
 	\`amount\` text NOT NULL,
 	\`balance_after\` text NOT NULL,
@@ -298,6 +283,41 @@ CREATE TABLE IF NOT EXISTS \`treasury_transactions\` (
 CREATE INDEX IF NOT EXISTS \`treasury_tx_account_idx\` ON \`treasury_transactions\` (\`treasury_account_id\`,\`created_at\`);
 CREATE INDEX IF NOT EXISTS \`treasury_tx_store_created_idx\` ON \`treasury_transactions\` (\`store_id\`,\`created_at\`);
 CREATE INDEX IF NOT EXISTS \`treasury_tx_reference_idx\` ON \`treasury_transactions\` (\`reference_id\`,\`reference_type\`);
+CREATE INDEX IF NOT EXISTS \`treasury_tx_opday_idx\` ON \`treasury_transactions\` (\`operational_day_id\`);
+CREATE TABLE IF NOT EXISTS \`operational_days\` (
+	\`id\` text PRIMARY KEY NOT NULL,
+	\`store_id\` text NOT NULL,
+	\`user_id\` text NOT NULL,
+	\`status\` text DEFAULT 'OPEN' NOT NULL,
+	\`opened_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL,
+	\`closed_at\` integer,
+	\`opening_cash_balance\` text DEFAULT '0' NOT NULL,
+	\`carry_over_cash\` text DEFAULT '0' NOT NULL,
+	\`actual_closing_cash_balance\` text,
+	\`expected_closing_cash_balance\` text,
+	\`cash_variance\` text,
+	\`total_transferred_to_main_safe\` text DEFAULT '0' NOT NULL,
+	\`notes\` text,
+	\`opened_by\` text NOT NULL,
+	\`closed_by\` text,
+	\`created_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS \`op_days_store_user_idx\` ON \`operational_days\` (\`store_id\`,\`user_id\`);
+CREATE INDEX IF NOT EXISTS \`op_days_store_status_idx\` ON \`operational_days\` (\`store_id\`,\`status\`);
+CREATE INDEX IF NOT EXISTS \`op_days_store_created_idx\` ON \`operational_days\` (\`store_id\`,\`created_at\`);
+CREATE TABLE IF NOT EXISTS \`cashier_balance_snapshots\` (
+	\`id\` text PRIMARY KEY NOT NULL,
+	\`store_id\` text NOT NULL,
+	\`operational_day_id\` text NOT NULL,
+	\`treasury_account_id\` text NOT NULL,
+	\`snapshot_type\` text NOT NULL,
+	\`balance\` text DEFAULT '0' NOT NULL,
+	\`total_in\` text DEFAULT '0' NOT NULL,
+	\`total_out\` text DEFAULT '0' NOT NULL,
+	\`created_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS \`balance_snapshots_opday_idx\` ON \`cashier_balance_snapshots\` (\`operational_day_id\`);
+CREATE INDEX IF NOT EXISTS \`balance_snapshots_account_idx\` ON \`cashier_balance_snapshots\` (\`treasury_account_id\`);
 CREATE TABLE IF NOT EXISTS \`accounting_accounts\` (
 	\`id\` text PRIMARY KEY NOT NULL,
 	\`store_id\` text NOT NULL,
@@ -664,6 +684,7 @@ CREATE TABLE IF NOT EXISTS \`store_settings\` (
 	\`allow_below_cost_discount\` integer DEFAULT false NOT NULL,
 	\`allow_negative_treasury\` integer DEFAULT false NOT NULL,
 	\`require_session_for_cash\` integer DEFAULT true NOT NULL,
+	\`shift_start_hour\` integer DEFAULT 11 NOT NULL,
 	\`created_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL,
 	\`updated_at\` integer DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer)) NOT NULL
 );

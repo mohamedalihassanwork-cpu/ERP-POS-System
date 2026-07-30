@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { AnalyticsService } from "../lib/analytics-service";
+import { getShiftStartHour, computeShiftStart } from "../lib/shift";
+import { hasPermission } from "@workspace/shared";
 import { and, eq, gt, sql } from "drizzle-orm";
 import {
   db,
@@ -13,25 +15,9 @@ import {
 
 const router: IRouter = Router();
 
-function startOfToday(): Date {
-  const d = new Date();
-  if (d.getHours() < 11) {
-    d.setDate(d.getDate() - 1);
-  }
-  d.setHours(11, 0, 0, 0);
-  return d;
-}
-
-function daysAgo(n: number): Date {
-  const d = startOfToday();
+function daysAgo(n: number, shiftStart: Date): Date {
+  const d = new Date(shiftStart);
   d.setDate(d.getDate() - n);
-  return d;
-}
-
-function startOfMonth(): Date {
-  const d = new Date();
-  d.setDate(1);
-  d.setHours(0, 0, 0, 0);
   return d;
 }
 
@@ -41,17 +27,37 @@ router.get(
   requirePermission("dashboard.view"),
   async (req, res) => {
     const storeId = req.auth!.storeId;
-    const today = startOfToday();
+    const userId = req.auth!.userId;
+    const perms = req.auth!.permissions;
 
-    const salesAgg = await AnalyticsService.getSalesKPIs(storeId, today);
-    const returnAgg = await AnalyticsService.getSalesReturnsKPIs(storeId, today);
-    const purchAgg = await AnalyticsService.getPurchasesKPIs(storeId, today);
-    const purchRetAgg = await AnalyticsService.getPurchaseReturnsKPIs(storeId, today);
-    const expAgg = await AnalyticsService.getExpensesKPIs(storeId, today);
-    const treasuryBalance = await AnalyticsService.getTreasuryBalance(storeId);
-    const cashDrawerBalance = await AnalyticsService.getCashDrawerBalance(storeId, today);
+    // Use the store's configured shift hour (replaces hardcoded 11)
+    const shiftHour = await getShiftStartHour(storeId);
+    const today = computeShiftStart(shiftHour);
+
+    const salesAgg = await AnalyticsService.getSalesKPIs(storeId, today, undefined, shiftHour);
+    const returnAgg = await AnalyticsService.getSalesReturnsKPIs(storeId, today, undefined, shiftHour);
+    const purchAgg = await AnalyticsService.getPurchasesKPIs(storeId, today, undefined, shiftHour);
+    const purchRetAgg = await AnalyticsService.getPurchaseReturnsKPIs(storeId, today, undefined, shiftHour);
+    const expAgg = await AnalyticsService.getExpensesKPIs(storeId, today, undefined, shiftHour);
     const customerDebts = await AnalyticsService.getCustomerDebts(storeId);
     const supplierDebts = await AnalyticsService.getSupplierDebts(storeId);
+
+    // --- Treasury KPIs (role-aware) ---
+    let treasuryBalance: number | null = null;
+    let mainSafeBalance: number | null = null;
+    let cashierSubTreasury: number | null = null;
+
+    if (hasPermission(perms, "treasury.view_all") || hasPermission(perms, "*")) {
+      // Manager/Accountant: total of ALL accounts
+      treasuryBalance = await AnalyticsService.getTreasuryBalance(storeId);
+    }
+    if (hasPermission(perms, "treasury.main_safe") || hasPermission(perms, "*")) {
+      mainSafeBalance = await AnalyticsService.getMainSafeBalance(storeId);
+    }
+    if (hasPermission(perms, "treasury.view") || hasPermission(perms, "*")) {
+      // Cashier: sum of their own 4 accounts (actual balance, not net flow)
+      cashierSubTreasury = await AnalyticsService.getCashierSubTreasuryBalance(storeId, userId);
+    }
 
     // Low stock count: variants whose total stock is at or below the product's reorder point.
     const lowStockRows = await db
@@ -90,7 +96,7 @@ router.get(
     const netSales = (salesAgg.revenue ?? 0) - (returnAgg.total ?? 0);
     const cogs = (salesAgg.cost ?? 0) - (returnAgg.cost ?? 0);
     const todayProfit = netSales - cogs;
-    
+
     const netPurchases = (purchAgg.total ?? 0) - (purchRetAgg.total ?? 0);
 
     res.json({
@@ -98,8 +104,12 @@ router.get(
       todayProfit: todayProfit,
       todayPurchases: netPurchases,
       todayExpenses: expAgg.total,
-      treasuryBalance: treasuryBalance,
-      cashDrawerBalance: cashDrawerBalance,
+      // Role-aware treasury KPIs
+      treasuryBalance,                  // null for cashiers (no treasury.view_all)
+      mainSafeBalance,                   // null without treasury.main_safe permission
+      cashierSubTreasury,               // sum of the logged-in cashier's own 4 accounts
+      // Legacy alias for backward compat with frontend
+      cashDrawerBalance: cashierSubTreasury,
       lowStockCount: lowStockRows.length,
       customerDebts: customerDebts,
       supplierDebts: supplierDebts,
@@ -107,6 +117,9 @@ router.get(
       totalAssociationsWithdrawn: assocWithdrawn,
       totalAssociationsReturned: assocReturned,
       totalAssociationsBalance: assocWithdrawn - assocReturned,
+      // Metadata for frontend to understand which KPIs are available
+      shiftStartHour: shiftHour,
+      shiftStartTime: today.toISOString(),
     });
   },
 );
@@ -117,7 +130,13 @@ router.get(
   requirePermission("dashboard.view"),
   async (req, res) => {
     const storeId = req.auth!.storeId;
-    const last30 = daysAgo(29);
+    const shiftHour = await getShiftStartHour(storeId);
+    const shiftStart = computeShiftStart(shiftHour);
+
+    // Last 30 operational days from now
+    const last30 = new Date(shiftStart);
+    last30.setDate(last30.getDate() - 29);
+
     const last12mo = (() => {
       const d = new Date();
       d.setMonth(d.getMonth() - 11);
@@ -126,9 +145,9 @@ router.get(
       return d;
     })();
 
-    const dailySales = await AnalyticsService.getDailySales(storeId, last30);
-    const monthlyRevenue = await AnalyticsService.getMonthlyRevenue(storeId, last12mo);
-    const cashFlow = await AnalyticsService.getCashFlow(storeId, last30);
+    const dailySales = await AnalyticsService.getDailySales(storeId, last30, shiftHour);
+    const monthlyRevenue = await AnalyticsService.getMonthlyRevenue(storeId, last12mo, shiftHour);
+    const cashFlow = await AnalyticsService.getCashFlowSimple(storeId, last30);
     const bestSellingProducts = await AnalyticsService.getBestSellingProducts(storeId);
     const salesByPaymentMethod = await AnalyticsService.getSalesByPaymentMethod(storeId);
     const salesByCategory = await AnalyticsService.getSalesByCategory(storeId);

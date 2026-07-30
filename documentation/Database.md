@@ -21,11 +21,7 @@ The SQLite default expression used everywhere:
 DEFAULT (cast((julianday('now') - 2440587.5)*86400000 as integer))
 ```
 
-This means timestamp comparisons in queries must use millisecond values, and date grouping uses expressions like:
-```sql
-strftime('%Y-%m-%d', datetime((created_at / 1000) - 39600, 'unixepoch'))
--- The -39600 (= -11 hours) shifts to the 11:00 AM shift boundary
-```
+This means timestamp comparisons in queries must use millisecond values. KPI date-range queries use app-layer shift-boundary arithmetic via `lib/shift.ts` (`computeShiftStart` / `computeShiftEnd`) instead of SQL offset expressions.
 
 ## Monetary Value Convention
 
@@ -361,16 +357,21 @@ The store's cash drawers and accounts. Each record represents one payment channe
 |--------|------|-------------|
 | `id` | TEXT PK | |
 | `store_id` | TEXT | |
+| `user_id` | TEXT | FK → users — **NULL for store-level accounts (MAIN_SAFE); non-null for cashier-owned accounts** |
 | `type` | TEXT NOT NULL | `CASH`, `CARD`, `INSTAPAY`, `WALLET`, `MAIN_SAFE` |
 | `name` | TEXT | Display name |
 | `balance` | TEXT DEFAULT '0' | Cached running balance |
 | `is_active` | INTEGER | |
 
-**Unique index**: `(store_id, type)` — one drawer per type per store.
+**Indexes**: `(store_id, type, user_id)`, `(store_id, user_id)`
 
-Default drawers seeded at setup: Cash Drawer (CASH), Main Safe (MAIN_SAFE), Card (CARD), InstaPay (INSTAPAY), Wallet (WALLET).
+**Architecture:**
+- `MAIN_SAFE` — one per store, `user_id = NULL`
+- `CASH`, `CARD`, `INSTAPAY`, `WALLET` — one set per cashier user (`user_id = cashier.id`)
 
-The `MAIN_SAFE` account receives backdated cash transactions (see `resolveBackdatedTreasuryAccount()`) and is hidden from users without `treasury.manage` or `settings.manage` permission.
+Cashier accounts are provisioned lazily on first use via `ensureCashierAccounts(db, storeId, userId)` in `lib/seed.ts`.
+
+The `MAIN_SAFE` account receives backdated cash transactions (see `resolveBackdatedTreasuryAccount()`) and is only visible to users with `treasury.main_safe` permission.
 
 ---
 
@@ -402,11 +403,11 @@ Immutable ledger of every money movement across treasury accounts.
 | `id` | TEXT PK | |
 | `store_id` | TEXT | |
 | `treasury_account_id` | TEXT | FK → treasury_accounts |
-| `session_id` | TEXT | FK → treasury_sessions (optional) |
+| `operational_day_id` | TEXT | FK → operational_days (optional) |
 | `direction` | TEXT NOT NULL | `IN` or `OUT` |
 | `amount` | TEXT NOT NULL | Positive amount |
 | `balance_after` | TEXT | Account balance after this transaction |
-| `reference_type` | TEXT NOT NULL | `SALE`, `PURCHASE`, `EXPENSE`, `SALARY`, `WITHDRAWAL`, `DEPOSIT`, `CUSTOMER_PAYMENT`, `SUPPLIER_PAYMENT`, `OPENING`, `TRANSFER`, `ADJUSTMENT`, or reversal variants |
+| `reference_type` | TEXT NOT NULL | `SALE`, `PURCHASE`, `EXPENSE`, `SALARY`, `WITHDRAWAL`, `DEPOSIT`, `CUSTOMER_PAYMENT`, `SUPPLIER_PAYMENT`, `OPENING`, `TRANSFER`, `ADJUSTMENT`, `DAY_OPEN_CARRY`, `DAY_CLOSE_RESET`, or reversal variants |
 | `reference_id` | TEXT | ID of source document |
 | `description` | TEXT | |
 | `created_by` | TEXT | FK → users |
@@ -880,7 +881,10 @@ Extended store settings (one row per store).
 | `allow_negative_stock` | INTEGER DEFAULT false | Allow stock to go below zero |
 | `allow_below_cost_discount` | INTEGER DEFAULT false | Allow selling below cost price |
 | `allow_negative_treasury` | INTEGER DEFAULT false | Allow treasury balance to go negative |
-| `require_session_for_cash` | INTEGER DEFAULT true | Require open treasury session for cash sales |
+| `require_session_for_cash` | INTEGER DEFAULT true | Require open operational day for cash sales |
+| `shift_start_hour` | INTEGER DEFAULT 11 | Hour (0–23) at which the operational day starts |
+
+> The `shift_start_hour` defines the daily boundary used by all KPI and shift calculations. Default of 11 means the operational day runs from 11:00 AM to 10:59:59 AM the next day.
 
 ---
 
@@ -925,6 +929,51 @@ Transactions for a rotating savings association.
 
 ---
 
+### `operational_days` (added via migration #4)
+Formal record of a cashier's working shift. Replaces the per-account `treasury_sessions` concept.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PK | UUID |
+| `store_id` | TEXT | FK → stores |
+| `user_id` | TEXT NOT NULL | FK → users (the cashier) |
+| `status` | TEXT DEFAULT 'OPEN' | `OPEN` or `CLOSED` |
+| `opened_at` | INTEGER | Unix ms of day open |
+| `closed_at` | INTEGER | Unix ms of day close (null if OPEN) |
+| `opening_cash_balance` | TEXT DEFAULT '0' | CASH carry-over at open |
+| `carry_over_cash` | TEXT DEFAULT '0' | Cash remaining in drawer after close |
+| `actual_closing_cash_balance` | TEXT | Cash physically counted at close |
+| `expected_closing_cash_balance` | TEXT | System-computed expected CASH |
+| `cash_variance` | TEXT | actual - expected |
+| `total_transferred_to_main_safe` | TEXT DEFAULT '0' | Total moved to MAIN_SAFE at close |
+| `notes` | TEXT | Optional cashier notes |
+| `opened_by` | TEXT NOT NULL | FK → users |
+| `closed_by` | TEXT | FK → users (null if OPEN) |
+| `created_at` | INTEGER | Unix ms |
+
+**Indexes**: `(store_id, user_id)`, `(store_id, status)`, `(store_id, created_at)`
+
+---
+
+### `cashier_balance_snapshots` (added via migration #5)
+Immutable balance snapshots taken at operational day open and close.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT PK | UUID |
+| `store_id` | TEXT | |
+| `operational_day_id` | TEXT NOT NULL | FK → operational_days |
+| `treasury_account_id` | TEXT NOT NULL | FK → treasury_accounts |
+| `snapshot_type` | TEXT NOT NULL | `OPENING` or `CLOSING` |
+| `balance` | TEXT DEFAULT '0' | Account balance at snapshot time |
+| `total_in` | TEXT DEFAULT '0' | Total IN during the day (CLOSING only) |
+| `total_out` | TEXT DEFAULT '0' | Total OUT during the day (CLOSING only) |
+| `created_at` | INTEGER | Unix ms |
+
+**Indexes**: `(operational_day_id)`, `(treasury_account_id)`
+
+---
+
 ## Schema Migrations
 
 The desktop application runs migrations at every startup via `ApplicationManager._runMigrations()`. The migrations are idempotent (all use `CREATE TABLE IF NOT EXISTS` and `COLUMN EXISTS` checks) and cover tables added after the initial schema:
@@ -936,3 +985,13 @@ The desktop application runs migrations at every startup via `ApplicationManager
 5. `salary_records.other_deductions` — additional deductions
 6. `associations` — rotating savings groups
 7. `association_transactions` — association ledger
+
+The web/desktop migration runner (`lib/db/src/migrations.ts`) introduces versioned migrations (v1–v5) applied automatically at startup:
+
+| Version | Name | Description |
+|---------|------|-------------|
+| 1 | `initial_schema_v1` | Full baseline schema from `auto-schema.ts` |
+| 2 | `store_settings_shift_start_hour` | Adds `shift_start_hour INTEGER DEFAULT 11` to `store_settings` |
+| 3 | `treasury_accounts_per_cashier` | Adds `user_id` to `treasury_accounts`; creates per-user indexes; adds `operational_day_id` to `treasury_transactions` |
+| 4 | `operational_days_table` | Creates the `operational_days` table and indexes |
+| 5 | `cashier_balance_snapshots_table` | Creates the `cashier_balance_snapshots` table and indexes |

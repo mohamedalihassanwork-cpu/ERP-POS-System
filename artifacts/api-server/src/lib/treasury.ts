@@ -1,6 +1,7 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db, treasuryAccountsTable, treasuryTransactionsTable } from "@workspace/db";
 import { money, toNum } from "./money";
+import { getShiftStartHour, computeShiftStart } from "./shift";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -22,7 +23,9 @@ export type TreasuryRefType =
   | "SUPPLIER_PAYMENT"
   | "OPENING"
   | "TRANSFER"
-  | "ADJUSTMENT";
+  | "ADJUSTMENT"
+  | "DAY_CLOSE_RESET"
+  | "DAY_OPEN_CARRY";
 
 export interface TreasuryPosting {
   storeId: string;
@@ -31,7 +34,7 @@ export interface TreasuryPosting {
   amount: number;
   referenceType: TreasuryRefType;
   referenceId?: string | null;
-  sessionId?: string | null;
+  operationalDayId?: string | null;
   description?: string | null;
   userId?: string | null;
   allowNegative?: boolean;
@@ -55,7 +58,6 @@ export async function postTreasuryTransaction(
         eq(treasuryAccountsTable.storeId, p.storeId),
       ),
     )
-    
     .limit(1);
   if (!acct) throw new Error("TREASURY_ACCOUNT_NOT_FOUND");
 
@@ -75,7 +77,7 @@ export async function postTreasuryTransaction(
     .values({
       storeId: p.storeId,
       treasuryAccountId: acct.id,
-      sessionId: p.sessionId ?? null,
+      operationalDayId: p.operationalDayId ?? null,
       direction: p.direction,
       amount: money(p.amount),
       balanceAfter: money(newBalance),
@@ -92,6 +94,7 @@ export async function postTreasuryTransaction(
 
 // Intercepts backdated cash transactions and routes them to the main safe.
 // This preserves the active cashier drawer balance which should only reflect today's physical cash.
+// Now uses configurable shift hour from store_settings instead of hardcoded 11.
 export async function resolveBackdatedTreasuryAccount(
   tx: Tx,
   storeId: string,
@@ -102,15 +105,11 @@ export async function resolveBackdatedTreasuryAccount(
   if (!transactionDate) return requestedAccountId;
 
   const date = new Date(transactionDate);
-  const today = new Date();
-  
-  // Offset today by 11 hours to match the system shift cutoff (11:00 AM)
-  // Times between 00:00 and 10:59 AM map to the active shift date of the previous calendar day
-  today.setHours(today.getHours() - 11);
-  today.setHours(0, 0, 0, 0);
+  const shiftHour = await getShiftStartHour(storeId);
+  const shiftStart = computeShiftStart(shiftHour, new Date());
 
-  // If it's today or in the future, don't change anything
-  if (date >= today) return requestedAccountId;
+  // If the date is in the current shift or future, don't change anything
+  if (date >= shiftStart) return requestedAccountId;
 
   // Check if requested account is a CASH account
   const [acct] = await tx
@@ -120,25 +119,31 @@ export async function resolveBackdatedTreasuryAccount(
     .limit(1);
 
   if (acct?.type === "CASH") {
-    // Override to MAIN_SAFE
+    // Check permission to post to MAIN_SAFE
+    if (userPermissions) {
+      const canAccessMainSafe =
+        userPermissions.includes("*") ||
+        userPermissions.includes("treasury.main_safe") ||
+        userPermissions.includes("settings.manage");
+      if (!canAccessMainSafe) {
+        throw new Error("UNAUTHORIZED_MAIN_SAFE");
+      }
+    }
+
+    // Override to MAIN_SAFE (store-level, user_id IS NULL)
     const [mainSafe] = await tx
       .select({ id: treasuryAccountsTable.id })
       .from(treasuryAccountsTable)
       .where(
         and(
           eq(treasuryAccountsTable.storeId, storeId),
-          eq(treasuryAccountsTable.type, "MAIN_SAFE")
+          eq(treasuryAccountsTable.type, "MAIN_SAFE"),
+          isNull(treasuryAccountsTable.userId),
         )
       )
       .limit(1);
 
     if (mainSafe) {
-      if (userPermissions) {
-        const canSeeMainSafe = userPermissions.includes("*") || userPermissions.includes("treasury.manage") || userPermissions.includes("settings.manage");
-        if (!canSeeMainSafe) {
-          throw new Error("UNAUTHORIZED_MAIN_SAFE");
-        }
-      }
       return mainSafe.id;
     }
   }

@@ -4,6 +4,7 @@ import {
   treasuryAccountsTable,
   storeSettingsTable,
 } from "@workspace/db";
+import { and, eq, isNull } from "drizzle-orm";
 
 // Both the connection and a transaction expose the insert builder used here.
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -47,14 +48,6 @@ export const CHART_OF_ACCOUNTS: ChartEntry[] = [
 
 type TreasuryType = "CASH" | "CARD" | "INSTAPAY" | "WALLET" | "MAIN_SAFE";
 
-const TREASURY_ACCOUNTS: { type: TreasuryType; name: string }[] = [
-  { type: "CASH", name: "درج الكاشير" },
-  { type: "MAIN_SAFE", name: "الخزينة الرئيسية" },
-  { type: "CARD", name: "البطاقات" },
-  { type: "INSTAPAY", name: "إنستا باي" },
-  { type: "WALLET", name: "المحفظة" },
-];
-
 // Treasury drawer → chart-of-accounts code. Used by treasury postings that also
 // need to hit the matching asset account in the general ledger.
 export const TREASURY_TYPE_TO_ACCOUNT_CODE: Record<TreasuryType, string> = {
@@ -65,9 +58,17 @@ export const TREASURY_TYPE_TO_ACCOUNT_CODE: Record<TreasuryType, string> = {
   WALLET: "1030",
 };
 
+// Cashier-owned account types (one set per user)
+const CASHIER_ACCOUNT_TYPES: { type: TreasuryType; nameTemplate: string }[] = [
+  { type: "CASH", nameTemplate: "درج الكاشير" },
+  { type: "CARD", nameTemplate: "البطاقات" },
+  { type: "INSTAPAY", nameTemplate: "إنستا باي" },
+  { type: "WALLET", nameTemplate: "المحفظة" },
+];
+
 // Idempotently provisions every per-store financial prerequisite: chart of
-// accounts, the four treasury drawers, and a settings row. Safe to call on every
-// financial request — conflicts on the per-store unique indexes are ignored.
+// accounts, the store-level MAIN_SAFE treasury account, and a settings row.
+// Safe to call on every financial request.
 export async function ensureStoreFinancials(dbc: DbLike, storeId: string): Promise<void> {
   await dbc
     .insert(accountingAccountsTable)
@@ -84,10 +85,93 @@ export async function ensureStoreFinancials(dbc: DbLike, storeId: string): Promi
     )
     .onConflictDoNothing();
 
+  // Seed the store-level MAIN_SAFE (user_id = NULL)
   await dbc
     .insert(treasuryAccountsTable)
-    .values(TREASURY_ACCOUNTS.map((t) => ({ storeId, type: t.type, name: t.name })))
+    .values({ storeId, type: "MAIN_SAFE", name: "الخزينة الرئيسية", userId: null })
     .onConflictDoNothing();
 
   await dbc.insert(storeSettingsTable).values({ storeId }).onConflictDoNothing();
+}
+
+// Idempotently creates CASH, CARD, INSTAPAY, WALLET accounts for a specific cashier.
+// Safe to call before any sale or session operation.
+export async function ensureCashierAccounts(
+  dbc: DbLike,
+  storeId: string,
+  userId: string,
+  userName?: string,
+): Promise<void> {
+  for (const acctDef of CASHIER_ACCOUNT_TYPES) {
+    await dbc
+      .insert(treasuryAccountsTable)
+      .values({
+        storeId,
+        userId,
+        type: acctDef.type,
+        name: userName ? `${acctDef.nameTemplate} — ${userName}` : acctDef.nameTemplate,
+      })
+      .onConflictDoNothing();
+  }
+}
+
+// Resolves the correct treasury account ID for a given account type and user.
+// For MAIN_SAFE: returns the store-level account (user_id IS NULL).
+// For others: returns the cashier's personal account.
+// Creates the account if it doesn't exist yet.
+export async function resolveTreasuryAccount(
+  dbc: DbLike,
+  storeId: string,
+  type: TreasuryType,
+  userId: string | null,
+): Promise<string> {
+  if (type === "MAIN_SAFE" || userId === null) {
+    // Store-level account
+    const [acct] = await (dbc as typeof db)
+      .select({ id: treasuryAccountsTable.id })
+      .from(treasuryAccountsTable)
+      .where(
+        and(
+          eq(treasuryAccountsTable.storeId, storeId),
+          eq(treasuryAccountsTable.type, type),
+          isNull(treasuryAccountsTable.userId),
+        ),
+      )
+      .limit(1);
+    if (!acct) throw new Error(`TREASURY_ACCOUNT_NOT_FOUND:${type}`);
+    return acct.id;
+  }
+
+  // Cashier-level account
+  const [acct] = await (dbc as typeof db)
+    .select({ id: treasuryAccountsTable.id })
+    .from(treasuryAccountsTable)
+    .where(
+      and(
+        eq(treasuryAccountsTable.storeId, storeId),
+        eq(treasuryAccountsTable.type, type),
+        eq(treasuryAccountsTable.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  if (!acct) {
+    // Lazily provision cashier accounts
+    await ensureCashierAccounts(dbc, storeId, userId);
+    const [newAcct] = await (dbc as typeof db)
+      .select({ id: treasuryAccountsTable.id })
+      .from(treasuryAccountsTable)
+      .where(
+        and(
+          eq(treasuryAccountsTable.storeId, storeId),
+          eq(treasuryAccountsTable.type, type),
+          eq(treasuryAccountsTable.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!newAcct) throw new Error(`TREASURY_ACCOUNT_NOT_FOUND:${type}`);
+    return newAcct.id;
+  }
+
+  return acct.id;
 }

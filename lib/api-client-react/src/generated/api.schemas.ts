@@ -1582,6 +1582,8 @@ export interface UpdateStoreSettingsInput {
   allowBelowCostDiscount?: boolean;
   allowNegativeTreasury?: boolean;
   requireSessionForCash?: boolean;
+  /** @minimum 0 @maximum 23 */
+  shiftStartHour?: number;
 }
 
 export interface NumberSequence {

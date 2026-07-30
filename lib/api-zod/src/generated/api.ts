@@ -3349,7 +3349,8 @@ export const UpdateStoreSettingsBody = zod.object({
   "allowNegativeStock": zod.boolean().optional(),
   "allowBelowCostDiscount": zod.boolean().optional(),
   "allowNegativeTreasury": zod.boolean().optional(),
-  "requireSessionForCash": zod.boolean().optional()
+  "requireSessionForCash": zod.boolean().optional(),
+  "shiftStartHour": zod.number().int().min(0).max(23).optional(),
 })
 
 export const UpdateStoreSettingsResponse = zod.object({
@@ -3368,7 +3369,8 @@ export const UpdateStoreSettingsResponse = zod.object({
   "allowNegativeStock": zod.boolean(),
   "allowBelowCostDiscount": zod.boolean(),
   "allowNegativeTreasury": zod.boolean(),
-  "requireSessionForCash": zod.boolean()
+  "requireSessionForCash": zod.boolean(),
+  "shiftStartHour": zod.number().int().optional(),
 })
 
 

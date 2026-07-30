@@ -44,25 +44,22 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth, requirePermission } from "../middleware/auth";
 import { toNum } from "../lib/money";
-function getShiftStart(d: Date | string): Date {
-  const dt = new Date(d);
-  const str = dt.toISOString().slice(0, 10);
-  return new Date(`${str}T11:00:00`);
-}
-function getShiftEnd(d: Date | string): Date {
-  const dt = new Date(d);
-  const str = dt.toISOString().slice(0, 10);
-  const e = new Date(`${str}T11:00:00`);
-  e.setDate(e.getDate() + 1);
-  e.setMilliseconds(e.getMilliseconds() - 1);
-  return e;
-}
+import { computeShiftStart, computeShiftEnd } from "../lib/shift";
 import { AnalyticsService } from "../lib/analytics-service";
 
 const router: IRouter = Router();
 
 function dateStr(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+// Adapter helpers used throughout reports.ts.
+// shiftHour defaults to 11 for backward compat; pass from store_settings for accuracy.
+function shiftStart(d: Date | string, shiftHour = 11): Date {
+  return computeShiftStart(shiftHour, new Date(d));
+}
+function shiftEnd(d: Date | string, shiftHour = 11): Date {
+  return computeShiftEnd(shiftHour, new Date(d));
 }
 
 const variantLabel = sql<
@@ -80,8 +77,8 @@ router.get(
     const q = GetSalesSummaryReportQueryParams.parse(req.query);
 
     const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
-    if (q.fromDate) conditions.push(gte(invoicesTable.createdAt, getShiftStart(q.fromDate)));
-    if (q.toDate) conditions.push(lte(invoicesTable.createdAt, getShiftEnd(q.toDate)));
+    if (q.fromDate) conditions.push(gte(invoicesTable.createdAt, shiftStart(q.fromDate)));
+    if (q.toDate) conditions.push(lte(invoicesTable.createdAt, shiftEnd(q.toDate)));
     if (q.customerId) conditions.push(eq(invoicesTable.customerId, q.customerId));
     if (q.paymentMethod) conditions.push(eq(invoicePaymentsTable.method, q.paymentMethod));
 
@@ -132,8 +129,8 @@ router.get(
     const q = GetPurchasesSummaryReportQueryParams.parse(req.query);
 
     const conditions: SQL[] = [eq(purchaseInvoicesTable.storeId, storeId)];
-    if (q.fromDate) conditions.push(gte(purchaseInvoicesTable.createdAt, getShiftStart(q.fromDate)));
-    if (q.toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, getShiftEnd(q.toDate)));
+    if (q.fromDate) conditions.push(gte(purchaseInvoicesTable.createdAt, shiftStart(q.fromDate)));
+    if (q.toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, shiftEnd(q.toDate)));
     if (q.supplierId) conditions.push(eq(purchaseInvoicesTable.supplierId, q.supplierId));
 
     const invoiceRows = await db
@@ -152,8 +149,8 @@ router.get(
 
     // Also get returns
     const retConditions: SQL[] = [eq(purchaseReturnsTable.storeId, storeId)];
-    if (q.fromDate) retConditions.push(gte(purchaseReturnsTable.createdAt, getShiftStart(q.fromDate)));
-    if (q.toDate) retConditions.push(lte(purchaseReturnsTable.createdAt, getShiftEnd(q.toDate)));
+    if (q.fromDate) retConditions.push(gte(purchaseReturnsTable.createdAt, shiftStart(q.fromDate)));
+    if (q.toDate) retConditions.push(lte(purchaseReturnsTable.createdAt, shiftEnd(q.toDate)));
     
     let returnQuery = db
       .select({
@@ -342,8 +339,8 @@ router.get(
     const q = GetTreasuryReportQueryParams.parse(req.query);
 
     const conditions: SQL[] = [eq(treasuryTransactionsTable.storeId, storeId)];
-    if (q.fromDate) conditions.push(gte(treasuryTransactionsTable.createdAt, getShiftStart(q.fromDate)));
-    if (q.toDate) conditions.push(lte(treasuryTransactionsTable.createdAt, getShiftEnd(q.toDate)));
+    if (q.fromDate) conditions.push(gte(treasuryTransactionsTable.createdAt, shiftStart(q.fromDate)));
+    if (q.toDate) conditions.push(lte(treasuryTransactionsTable.createdAt, shiftEnd(q.toDate)));
     if (q.accountId) conditions.push(eq(treasuryTransactionsTable.treasuryAccountId, q.accountId));
 
     const rows = await db
@@ -385,8 +382,8 @@ router.get(
     const q = GetExpenseReportQueryParams.parse(req.query);
 
     const conditions: SQL[] = [eq(expensesTable.storeId, storeId)];
-    if (q.fromDate) conditions.push(gte(expensesTable.expenseDate, dateStr(getShiftStart(q.fromDate))));
-    if (q.toDate) conditions.push(lte(expensesTable.expenseDate, dateStr(getShiftEnd(q.toDate))));
+    if (q.fromDate) conditions.push(gte(expensesTable.expenseDate, dateStr(shiftStart(q.fromDate))));
+    if (q.toDate) conditions.push(lte(expensesTable.expenseDate, dateStr(shiftEnd(q.toDate))));
     if (q.categoryId) conditions.push(eq(expensesTable.categoryId, q.categoryId));
 
     const rows = await db
@@ -418,8 +415,8 @@ router.get(
     const q = GetTopProductsReportQueryParams.parse(req.query);
 
     const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
-    if (q.fromDate) conditions.push(gte(invoicesTable.createdAt, getShiftStart(q.fromDate)));
-    if (q.toDate) conditions.push(lte(invoicesTable.createdAt, getShiftEnd(q.toDate)));
+    if (q.fromDate) conditions.push(gte(invoicesTable.createdAt, shiftStart(q.fromDate)));
+    if (q.toDate) conditions.push(lte(invoicesTable.createdAt, shiftEnd(q.toDate)));
 
     const rows = await db
       .select({
@@ -491,11 +488,11 @@ router.get(
     // Date conditions applied on the parent transaction's entryDate
     const txConditions: SQL[] = [eq(accountingTransactionsTable.storeId, storeId)];
     if (fromDateStr) {
-      const from = getShiftStart(fromDateStr);
+      const from = shiftStart(fromDateStr);
       if (!isNaN(from.getTime())) txConditions.push(gte(accountingTransactionsTable.entryDate, from));
     }
     if (toDateStr) {
-      const to = getShiftEnd(toDateStr);
+      const to = shiftEnd(toDateStr);
       if (!isNaN(to.getTime())) { txConditions.push(lte(accountingTransactionsTable.entryDate, to)); }
     }
 
@@ -655,11 +652,11 @@ router.get(
       eq(inventoryMovementsTable.storeId, storeId),
     ];
     if (fromDateStr) {
-      const from = getShiftStart(fromDateStr);
+      const from = shiftStart(fromDateStr);
       if (!isNaN(from.getTime())) movConditions.push(gte(inventoryMovementsTable.createdAt, from));
     }
     if (toDateStr) {
-      const to = getShiftEnd(toDateStr);
+      const to = shiftEnd(toDateStr);
       if (!isNaN(to.getTime())) { movConditions.push(lte(inventoryMovementsTable.createdAt, to)); }
     }
 
@@ -743,11 +740,11 @@ router.get(
       eq(customerTransactionsTable.storeId, storeId),
     ];
     if (fromDateStr) {
-      const from = getShiftStart(fromDateStr);
+      const from = shiftStart(fromDateStr);
       if (!isNaN(from.getTime())) txConditions.push(gte(customerTransactionsTable.createdAt, from));
     }
     if (toDateStr) {
-      const to = getShiftEnd(toDateStr);
+      const to = shiftEnd(toDateStr);
       if (!isNaN(to.getTime())) { txConditions.push(lte(customerTransactionsTable.createdAt, to)); }
     }
 
@@ -806,11 +803,11 @@ router.get(
 
     const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
     if (fromDateStr) {
-      const from = getShiftStart(fromDateStr);
+      const from = shiftStart(fromDateStr);
       if (!isNaN(from.getTime())) conditions.push(gte(invoicesTable.createdAt, from));
     }
     if (toDateStr) {
-      const to = getShiftEnd(toDateStr);
+      const to = shiftEnd(toDateStr);
       if (!isNaN(to.getTime())) { conditions.push(lte(invoicesTable.createdAt, to)); }
     }
 
@@ -827,11 +824,11 @@ router.get(
 
     const retConditions: SQL[] = [eq(salesReturnsTable.storeId, storeId)];
     if (fromDateStr) {
-      const from = getShiftStart(fromDateStr);
+      const from = shiftStart(fromDateStr);
       if (!isNaN(from.getTime())) retConditions.push(gte(salesReturnsTable.createdAt, from));
     }
     if (toDateStr) {
-      const to = getShiftEnd(toDateStr);
+      const to = shiftEnd(toDateStr);
       if (!isNaN(to.getTime())) { retConditions.push(lte(salesReturnsTable.createdAt, to)); }
     }
 

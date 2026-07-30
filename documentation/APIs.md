@@ -254,45 +254,81 @@
 ## Treasury
 
 ### `GET /api/treasury/accounts`
-- **Auth**: `requireAuth` (no specific permission — all cashiers need to see drawers)
-- **Action**: Auto-seeds missing drawers via `ensureStoreFinancials()`
-- **Permission filter**: `MAIN_SAFE` account hidden unless user has `treasury.manage` or `settings.manage`
+- **Auth**: `requireAuth`
+- **Permission filter**:
+  - Cashiers (no `treasury.view_all`): returns only their own accounts (CASH/CARD/INSTAPAY/WALLET where `user_id = userId`) — MAIN_SAFE excluded
+  - Managers/Accountants (`treasury.view_all`): returns all accounts for all cashiers + MAIN_SAFE (if `treasury.main_safe` permission)
+- **Response includes**: `userName` for each account (joined from users table)
 
 ### `GET /api/treasury/transactions`
 - **Auth**: `treasury.view`
 - **Query**: `treasuryAccountId`, `direction`, `referenceType`, `dateFrom`, `dateTo`, `page`, `pageSize`
 
-### `GET /api/treasury/sessions`
-- **Auth**: `treasury.view` or `treasury.session`
-- **Query**: `status`, `dateFrom`, `dateTo`, `page`, `pageSize`
-
-### `GET /api/treasury/sessions/current`
-- **Auth**: `treasury.view` or `treasury.session`
-- **Query**: `treasuryAccountId?`
-- **Returns**: Currently open session, or `null`
-
-### `POST /api/treasury/sessions/open`
-- **Auth**: `treasury.session` or `treasury.manage`
-- **Body**: `{ treasuryAccountId, openingBalance }`
-- **Validation**: No other session can be open for the same account
-- **Action**: Creates session row; posts `OPENING` treasury transaction (direction IN)
-
-### `POST /api/treasury/sessions/:id/close`
-- **Auth**: `treasury.session` or `treasury.manage`
-- **Body**: `{ actualClosingBalance, notes? }`
-- **Action**: Computes expected balance from transactions; calculates variance; closes session; posts `ADJUSTMENT` if variance ≠ 0
-
 ### `POST /api/treasury/transfers`
-- **Auth**: `treasury.manage`
+- **Auth**: `treasury.transfer`
 - **Body**: `{ fromAccountId, toAccountId, amount, description? }`
 - **Action**: Posts OUT on source account and IN on destination account (two `treasury_transactions` rows + one `treasury_transfers` row)
 
 ### `POST /api/treasury/adjustments`
-- **Auth**: `treasury.manage`
+- **Auth**: `treasury.adjustment`
 - **Body**: `{ treasuryAccountId, direction, amount, description }`
 - **Action**: Posts a treasury transaction + journal entry
 
 ---
+
+## Operating Days (الأيام التشغيلية)
+
+Manages the operational day lifecycle for cashiers. See [OperationalDay.md](OperationalDay.md) for full lifecycle documentation.
+
+### `GET /api/operating-days`
+- **Auth**: `treasury.view`
+- **Query**: `page`, `pageSize`, `status` (`OPEN`|`CLOSED`)
+- **Behaviour**: Cashiers see only their own days; managers with `treasury.view_all` see all cashiers' days
+- **Returns**: Paginated list of operational days with `userName`
+
+### `GET /api/operating-days/current`
+- **Auth**: `treasury.view`
+- **Returns**: `{ operationalDay: OperationalDay | null }` — the currently open day for the authenticated user
+
+### `GET /api/operating-days/:id`
+- **Auth**: `treasury.view`
+- **Returns**: `{ operationalDay, snapshots[] }` — day details + all balance snapshots (OPENING + CLOSING)
+- **Permission**: Cashiers can only view their own days; managers can view any
+
+### `POST /api/operating-days` — Open Day
+- **Auth**: `treasury.session`
+- **Body**:
+  ```json
+  { "openingCashBalance": 500, "notes": "Optional" }
+  ```
+- **Validations**:
+  - Rejects if user already has an OPEN day
+  - Rejects if user already had a day in the current shift window (one per shift, per Q5)
+- **Action**:
+  1. `ensureStoreFinancials` + `ensureCashierAccounts`
+  2. Creates `operational_days` row (status = OPEN)
+  3. If `openingCashBalance > 0`: posts `DAY_OPEN_CARRY` IN transaction to cashier's CASH account
+  4. Creates OPENING balance snapshots for all 4 cashier accounts
+- **Returns** `201`: Created operational day
+
+### `POST /api/operating-days/:id/close` — Close Day
+- **Auth**: `treasury.session`
+- **Body**:
+  ```json
+  { "actualClosingCashBalance": 1200, "carryOverCash": 200, "notes": "Optional" }
+  ```
+- **Permission**: Owner of the day, or user with `treasury.close_others`
+- **Action**:
+  1. Computes expected CASH balance from opening + net transactions
+  2. Records variance
+  3. Creates CLOSING snapshots for all 4 accounts (includes total_in / total_out during day)
+  4. Transfers all CARD/INSTAPAY/WALLET balances → MAIN_SAFE
+  5. Transfers `(actualCash - carryOverCash)` → MAIN_SAFE
+  6. Zeroes any remaining CASH variance via `DAY_CLOSE_RESET` transaction
+  7. Updates operational day: `status = CLOSED`, `closed_at`, `closed_by`, `cash_variance`, etc.
+- **Returns** `200`: Updated operational day
+
+
 
 ## Customers
 
@@ -582,7 +618,13 @@ All report endpoints require `requireAuth` + specific `reports.*` permission.
 
 ### `PATCH /api/settings`
 - **Auth**: `settings.manage`
-- **Body**: Partial `store_settings` fields (tax, numeral format, receipt, permissions)
+- **Body**: Partial `store_settings` fields including:
+  - Tax: `taxEnabled`, `taxRate`, `taxInclusive`
+  - Receipts: `receiptSize`, `receiptFooter`, `numeralFormat`
+  - Stock: `allowNegativeStock`, `allowBelowCostDiscount`
+  - Treasury: `allowNegativeTreasury`, `requireSessionForCash`
+  - **Shift**: `shiftStartHour` (0–23, integer) — configures the operational day start hour
+- **Side effect**: Invalidates `shift_hour_cache` for the store when `shiftStartHour` changes
 
 ### `GET /api/settings/store`
 - **Auth**: `settings.view`
