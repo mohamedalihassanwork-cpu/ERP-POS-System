@@ -158,7 +158,7 @@ router.get(
       cashFlow,
       bestSellingProducts,
       salesByPaymentMethod,
-      salesByCategory,
+      categoryPerformance: salesByCategory,
     });
   },
 );
