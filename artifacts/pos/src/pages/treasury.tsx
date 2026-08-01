@@ -16,6 +16,8 @@ import {
   XCircle,
   ChevronDown,
   ChevronUp,
+  ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
 import {
   useListTreasuryAccounts,
@@ -122,11 +124,53 @@ function toArabicNumerals(val: string): string {
 }
 
 const ACCOUNT_ICONS: Record<string, React.ReactNode> = {
-  CASH: <Banknote size={22} />,
-  CARD: <CreditCard size={22} />,
-  INSTAPAY: <Smartphone size={22} />,
-  WALLET: <Wallet size={22} />,
-  MAIN_SAFE: <Wallet size={22} />,
+  CASH: <Banknote size={20} />,
+  CARD: <CreditCard size={20} />,
+  INSTAPAY: <Smartphone size={20} />,
+  WALLET: <Wallet size={20} />,
+  MAIN_SAFE: <ShieldCheck size={22} />,
+};
+
+// Color theme per account type for the card backgrounds and accents
+const ACCOUNT_THEME: Record<
+  string,
+  { bg: string; iconBg: string; iconColor: string; badge: string; label: string }
+> = {
+  CASH: {
+    bg: "bg-white",
+    iconBg: "bg-emerald-50",
+    iconColor: "text-emerald-600",
+    badge: "bg-emerald-100 text-emerald-700",
+    label: "نقدي",
+  },
+  CARD: {
+    bg: "bg-white",
+    iconBg: "bg-blue-50",
+    iconColor: "text-blue-600",
+    badge: "bg-blue-100 text-blue-700",
+    label: "بطاقة",
+  },
+  INSTAPAY: {
+    bg: "bg-white",
+    iconBg: "bg-violet-50",
+    iconColor: "text-violet-600",
+    badge: "bg-violet-100 text-violet-700",
+    label: "انستاباي",
+  },
+  WALLET: {
+    bg: "bg-white",
+    iconBg: "bg-amber-50",
+    iconColor: "text-amber-600",
+    badge: "bg-amber-100 text-amber-700",
+    label: "محفظة",
+  },
+  MAIN_SAFE: {
+    bg: "bg-white",
+    iconBg: "bg-slate-800",
+    iconColor: "text-amber-400",
+    badge: "bg-slate-100 text-slate-700",
+    label: "خزينة رئيسية",
+  },
 };
 
 const REF_TYPE_LABELS: Record<string, string> = {
@@ -183,21 +227,32 @@ export function TreasuryPage() {
   const currentDay = currentDayQuery.data?.operationalDay ?? null;
   const days = daysQuery.data?.items ?? [];
 
+  // Split accounts: MAIN_SAFE goes first as the hero card
+  const mainSafe = accounts.find((a) => a.type === "MAIN_SAFE") ?? null;
+  const drawerAccounts = accounts.filter((a) => a.type !== "MAIN_SAFE");
+
+  // Total balance across all accounts
+  const totalBalance = accounts.reduce(
+    (sum, a) => sum + Number(a.balance ?? 0),
+    0,
+  );
+
   return (
-    <div className="flex-1 overflow-auto p-6 lg:p-8">
+    <div className="flex-1 overflow-auto p-6 lg:p-8" dir="rtl">
       <div className="max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
+
+        {/* ── Page header + action buttons ── */}
+        <div className="flex items-start justify-between flex-wrap gap-3">
           <PageHeader
             title="الخزينة"
             subtitle="أرصدة الخزائن واليومي التشغيلي والحركات المالية"
             icon={<Wallet size={24} />}
           />
-          <div className="flex gap-2 flex-wrap">
+          <div className="flex gap-2 flex-wrap pt-1">
             {canTransfer && accounts.length > 1 && (
               <button
                 onClick={() => setShowTransfer(true)}
-                className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-bold hover:bg-slate-200 transition flex items-center gap-2 text-sm"
+                className="px-4 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 hover:border-slate-300 transition-all flex items-center gap-2 text-sm shadow-sm"
               >
                 <ArrowRightLeft size={16} />
                 تحويل رصيد
@@ -206,7 +261,7 @@ export function TreasuryPage() {
             {canSession && !currentDay && (
               <button
                 onClick={() => setShowOpenDay(true)}
-                className="px-5 py-2.5 bg-amber-500 text-slate-900 rounded-xl font-bold hover:bg-amber-400 transition flex items-center gap-2"
+                className="px-5 py-2.5 bg-amber-500 text-slate-900 rounded-xl font-bold hover:bg-amber-400 transition-all flex items-center gap-2 shadow-sm shadow-amber-200"
                 data-testid="button-open-day"
               >
                 <PlayCircle size={18} />
@@ -216,7 +271,7 @@ export function TreasuryPage() {
             {canSession && currentDay && (
               <button
                 onClick={() => setShowCloseDay(true)}
-                className="px-5 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition flex items-center gap-2"
+                className="px-5 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition-all flex items-center gap-2 shadow-sm shadow-red-200"
                 data-testid="button-close-day"
               >
                 <StopCircle size={18} />
@@ -226,7 +281,7 @@ export function TreasuryPage() {
           </div>
         </div>
 
-        {/* Current operational day banner */}
+        {/* ── Operational day banner ── */}
         {canSession && (
           <CurrentDayBanner
             day={currentDay}
@@ -234,58 +289,70 @@ export function TreasuryPage() {
           />
         )}
 
-        {/* Account cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {accountsQuery.isLoading ? (
-            <p className="text-slate-400 col-span-full text-center py-10">
-              جارٍ التحميل...
+        {/* ── Account cards ── */}
+        {accountsQuery.isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="flex flex-col items-center gap-3 text-slate-400">
+              <Loader2 size={28} className="animate-spin" />
+              <p className="text-sm">جارٍ تحميل الخزائن...</p>
+            </div>
+          </div>
+        ) : accounts.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-12 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4">
+              <Wallet size={28} />
+            </div>
+            <p className="font-bold text-slate-700 mb-1">لا توجد خزائن</p>
+            <p className="text-slate-400 text-sm">
+              افتح يوماً تشغيلياً أولاً لتفعيل الخزائن.
             </p>
-          ) : accounts.length === 0 ? (
-            <p className="text-slate-400 col-span-full text-center py-10">
-              لا توجد حسابات خزينة. افتح يوماً تشغيلياً أولاً.
-            </p>
-          ) : (
-            accounts.map((a) => (
-              <div
-                key={a.id}
-                className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5"
-                data-testid={`card-treasury-${a.type}`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-11 h-11 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                    {ACCOUNT_ICONS[a.type] ?? <Wallet size={22} />}
-                  </div>
-                  {canSession && a.type !== "MAIN_SAFE" && (
-                    <button
-                      onClick={() => setAdjustmentAccount(a)}
-                      className="text-xs font-bold text-slate-500 hover:text-slate-800 transition bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded"
-                      title="تسوية الرصيد"
-                    >
-                      <Settings2 size={14} />
-                    </button>
-                  )}
-                </div>
-                <p className="text-slate-500 text-sm">{a.name}</p>
-                {(a as any).userName && (
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {(a as any).userName}
-                  </p>
-                )}
-                <p className="text-2xl font-bold text-slate-800 mt-1">
-                  {money(a.balance)}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* ── Main Safe Hero Card ── */}
+            {mainSafe && (
+              <MainSafeHeroCard
+                account={mainSafe}
+                totalBalance={totalBalance}
+                drawerCount={drawerAccounts.length}
+              />
+            )}
 
-        {/* Transactions + Operational Days history */}
+            {/* ── Drawer Accounts Grid ── */}
+            {drawerAccounts.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wide">
+                    حسابات الخزائن
+                  </h3>
+                  <div className="flex-1 h-px bg-slate-100" />
+                  <span className="text-xs text-slate-400 font-medium">
+                    {drawerAccounts.length} خزينة
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {drawerAccounts.map((a) => (
+                    <TreasuryAccountCard
+                      key={a.id}
+                      account={a}
+                      canAdjust={canSession}
+                      onAdjust={() => setAdjustmentAccount(a)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Transactions + Operational Days ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Transactions */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-            <h2 className="font-bold text-slate-800 px-6 py-4 border-b border-slate-100">
-              آخر الحركات
-            </h2>
+            <div className="flex items-center gap-2 px-6 py-4 border-b border-slate-100">
+              <TrendingUp size={16} className="text-amber-500" />
+              <h2 className="font-bold text-slate-800">آخر الحركات</h2>
+            </div>
             <div className="max-h-[28rem] overflow-auto">
               {txQuery.isLoading ? (
                 <p className="text-slate-400 text-center py-12">
@@ -303,21 +370,25 @@ export function TreasuryPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {transactions.map((t) => (
-                      <tr key={t.id} data-testid={`row-treasury-tx-${t.id}`}>
-                        <td className="px-4 py-3 text-slate-600">
+                      <tr
+                        key={t.id}
+                        className="hover:bg-slate-50 transition-colors"
+                        data-testid={`row-treasury-tx-${t.id}`}
+                      >
+                        <td className="px-4 py-3 text-slate-600 font-medium">
                           {t.accountName}
                         </td>
                         <td className="px-4 py-3">
-                          <span className="inline-flex items-center gap-1 text-slate-600">
+                          <span className="inline-flex items-center gap-1.5 text-slate-600">
                             {t.direction === "IN" ? (
                               <ArrowDownCircle
                                 size={15}
-                                className="text-green-600"
+                                className="text-emerald-500"
                               />
                             ) : (
                               <ArrowUpCircle
                                 size={15}
-                                className="text-red-600"
+                                className="text-red-500"
                               />
                             )}
                             {REF_TYPE_LABELS[t.referenceType] ??
@@ -325,16 +396,16 @@ export function TreasuryPage() {
                           </span>
                         </td>
                         <td
-                          className={`px-4 py-3 font-bold ${
+                          className={`px-4 py-3 font-bold tabular-nums ${
                             t.direction === "IN"
-                              ? "text-green-600"
+                              ? "text-emerald-600"
                               : "text-red-600"
                           }`}
                         >
                           {t.direction === "IN" ? "+" : "−"}
                           {money(t.amount)}
                         </td>
-                        <td className="px-4 py-3 text-slate-700">
+                        <td className="px-4 py-3 text-slate-700 tabular-nums">
                           {money(t.balanceAfter)}
                         </td>
                       </tr>
@@ -352,7 +423,7 @@ export function TreasuryPage() {
           {/* Operational days history */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
             <h2 className="font-bold text-slate-800 px-6 py-4 border-b border-slate-100 flex items-center gap-2">
-              <Calendar size={18} className="text-amber-500" />
+              <Calendar size={16} className="text-amber-500" />
               {canViewAll ? "سجل الأيام التشغيلية" : "أيامي التشغيلية"}
             </h2>
             <div className="max-h-[28rem] overflow-auto">
@@ -386,7 +457,7 @@ export function TreasuryPage() {
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ── */}
       {showOpenDay && (
         <OpenDayModal onClose={() => setShowOpenDay(false)} />
       )}
@@ -408,6 +479,178 @@ export function TreasuryPage() {
           onClose={() => setAdjustmentAccount(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main Safe Hero Card
+// ---------------------------------------------------------------------------
+
+function MainSafeHeroCard({
+  account,
+  totalBalance,
+  drawerCount,
+}: {
+  account: TreasuryAccount;
+  totalBalance: number;
+  drawerCount: number;
+}) {
+  const bal = Number(account.balance ?? 0);
+  const isPositive = bal >= 0;
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-2xl bg-slate-900 text-white p-6 shadow-lg"
+      style={{
+        background: "linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #1e3a5f 100%)",
+      }}
+      data-testid={`card-treasury-${account.type}`}
+    >
+      {/* Decorative orb */}
+      <div
+        className="absolute -top-12 -left-12 w-48 h-48 rounded-full opacity-10"
+        style={{
+          background: "radial-gradient(circle, #f59e0b 0%, transparent 70%)",
+        }}
+      />
+      <div
+        className="absolute -bottom-8 -right-8 w-32 h-32 rounded-full opacity-10"
+        style={{
+          background: "radial-gradient(circle, #3b82f6 0%, transparent 70%)",
+        }}
+      />
+
+      <div className="relative flex items-start justify-between gap-4">
+        {/* Left: icon + labels */}
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500 bg-opacity-20 border border-amber-400 border-opacity-30 flex items-center justify-center shrink-0">
+            <ShieldCheck size={26} className="text-amber-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold bg-amber-500 bg-opacity-20 text-amber-300 px-2.5 py-0.5 rounded-full border border-amber-400 border-opacity-20">
+                خزينة رئيسية
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-white leading-tight">
+              {account.name}
+            </h3>
+            {(account as any).userName && (
+              <p className="text-slate-400 text-xs mt-0.5">
+                {(account as any).userName}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Right: balance */}
+        <div className="text-left shrink-0">
+          <p className="text-slate-400 text-xs mb-1">الرصيد الحالي</p>
+          <p
+            className={`text-3xl font-black tabular-nums tracking-tight ${
+              isPositive ? "text-white" : "text-red-400"
+            }`}
+          >
+            {money(account.balance)}
+          </p>
+          <p className="text-slate-400 text-xs mt-1 text-left">ج.م</p>
+        </div>
+      </div>
+
+      {/* Bottom stats row */}
+      {drawerCount > 0 && (
+        <div className="relative mt-5 pt-4 border-t border-white border-opacity-10 flex items-center gap-6 text-sm">
+          <div>
+            <p className="text-slate-400 text-xs">إجمالي كل الخزائن</p>
+            <p className="font-bold text-amber-300 tabular-nums">
+              {money(totalBalance)} ج.م
+            </p>
+          </div>
+          <div className="w-px h-8 bg-white bg-opacity-10" />
+          <div>
+            <p className="text-slate-400 text-xs">عدد الخزائن المرتبطة</p>
+            <p className="font-bold text-white">{drawerCount} خزينة</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Drawer Account Card
+// ---------------------------------------------------------------------------
+
+function TreasuryAccountCard({
+  account,
+  canAdjust,
+  onAdjust,
+}: {
+  account: TreasuryAccount;
+  canAdjust: boolean;
+  onAdjust: () => void;
+}) {
+  const theme =
+    ACCOUNT_THEME[account.type] ?? ACCOUNT_THEME["WALLET"];
+  const bal = Number(account.balance ?? 0);
+  const isNegative = bal < 0;
+
+  return (
+    <div
+      className={`group relative ${theme.bg} rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200`}
+      data-testid={`card-treasury-${account.type}`}
+    >
+      {/* Top row: icon + type badge + adjust btn */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div
+            className={`w-10 h-10 rounded-xl ${theme.iconBg} ${theme.iconColor} flex items-center justify-center shrink-0`}
+          >
+            {ACCOUNT_ICONS[account.type] ?? <Wallet size={20} />}
+          </div>
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded-md ${theme.badge}`}
+          >
+            {theme.label}
+          </span>
+        </div>
+        {canAdjust && (
+          <button
+            onClick={onAdjust}
+            className="opacity-0 group-hover:opacity-100 w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-all"
+            title="تسوية الرصيد"
+          >
+            <Settings2 size={14} />
+          </button>
+        )}
+      </div>
+
+      {/* Account name + user */}
+      <div className="mb-3">
+        <p className="font-bold text-slate-800 text-sm leading-snug">
+          {account.name}
+        </p>
+        {(account as any).userName && (
+          <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-slate-300 inline-block" />
+            {(account as any).userName}
+          </p>
+        )}
+      </div>
+
+      {/* Balance — the hero number */}
+      <div className="pt-3 border-t border-slate-100">
+        <p className="text-xs text-slate-400 mb-0.5">الرصيد</p>
+        <p
+          className={`text-2xl font-black tabular-nums tracking-tight ${
+            isNegative ? "text-red-600" : "text-slate-800"
+          }`}
+        >
+          {money(account.balance)}
+        </p>
+        <p className="text-xs text-slate-400 mt-0.5">ج.م</p>
+      </div>
     </div>
   );
 }
