@@ -850,6 +850,7 @@ router.post("/sales/returns", requireAuth, requirePermission("sales.return"), as
           quantity: invoiceItemsTable.quantity,
           unitPrice: invoiceItemsTable.unitPrice,
           unitCost: invoiceItemsTable.unitCost,
+          lineTotal: invoiceItemsTable.lineTotal,
           returnedQuantity: invoiceItemsTable.returnedQuantity,
         })
         .from(invoiceItemsTable)
@@ -864,11 +865,12 @@ router.post("/sales/returns", requireAuth, requirePermission("sales.return"), as
         if (!Number.isInteger(r.quantity) || r.quantity <= 0) throw new Error("BAD_QUANTITY");
         const remaining = src.quantity - src.returnedQuantity;
         if (r.quantity > remaining) throw new Error("RETURN_EXCEEDS_SOLD");
-        const lineTotal = r.quantity * toNum(src.unitPrice);
+        const effectiveUnitPrice = toNum(src.lineTotal) / src.quantity;
+        const lineTotal = r.quantity * effectiveUnitPrice;
         const lineCost = r.quantity * toNum(src.unitCost);
         totalAmount += lineTotal;
         totalCost += lineCost;
-        return { src, quantity: r.quantity, unitPrice: toNum(src.unitPrice), lineTotal, lineCost };
+        return { src, quantity: r.quantity, unitPrice: effectiveUnitPrice, lineTotal, lineCost };
       });
 
       const returnNumber = await nextDocumentNumber(tx, storeId, "SALES_RETURN");

@@ -276,7 +276,10 @@ function CreateReturnModal({
     : [];
 
   const totalRefund = invoice
-    ? invoice.items.reduce((s, it) => s + (quantities[it.id] ?? 0) * Number(it.unitPrice), 0)
+    ? invoice.items.reduce((s, it) => {
+        const effectiveUnitPrice = Number(it.lineTotal) / it.quantity;
+        return s + (quantities[it.id] ?? 0) * effectiveUnitPrice;
+      }, 0)
     : 0;
 
   async function submit() {

@@ -68,6 +68,7 @@ interface CartLine {
   unitPrice: number;
   quantity: number;
   stock: number;
+  discountAmount: number;
 }
 
 const PAY_METHODS: { value: Exclude<PayMethod, "CREDIT">; label: string; icon: typeof Banknote }[] = [
@@ -156,7 +157,6 @@ export function POSPage() {
 
   // ---- cart ---------------------------------------------------------------
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [discount, setDiscount] = useState("");
   const [customerId, setCustomerId] = useState<string>("");
   type PaymentLine = { method: Exclude<PayMethod, "CREDIT">; amount: string };
   const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([{ method: "CASH", amount: "" }]);
@@ -169,8 +169,8 @@ export function POSPage() {
   const [showCreateCustomer, setShowCreateCustomer] = useState(false);
 
   const subtotal = useMemo(() => cart.reduce((s, l) => s + l.unitPrice * l.quantity, 0), [cart]);
-  const discountAmount = Math.min(Math.max(Number(discount) || 0, 0), subtotal);
-  const total = subtotal - discountAmount;
+  const totalDiscount = useMemo(() => cart.reduce((s, l) => s + (l.discountAmount || 0), 0), [cart]);
+  const total = subtotal - totalDiscount;
 
   function addVariant(product: Product, variant: ProductVariant) {
     const price = Number(variant.sellingPrice ?? product.basePrice);
@@ -194,6 +194,7 @@ export function POSPage() {
           unitPrice: price,
           quantity: 1,
           stock: variant.totalStock ?? 0,
+          discountAmount: 0,
         },
       ];
     });
@@ -211,10 +212,24 @@ export function POSPage() {
   function updateQty(variantId: string, delta: number) {
     setCart((prev) =>
       prev
-        .map((l) =>
-          l.variantId === variantId ? { ...l, quantity: l.quantity + delta } : l,
-        )
+        .map((l) => {
+          if (l.variantId !== variantId) return l;
+          const newQty = l.quantity + delta;
+          // Ensure discount doesn't exceed the new line total
+          const newDiscount = Math.min(l.discountAmount, l.unitPrice * newQty);
+          return { ...l, quantity: newQty, discountAmount: newDiscount };
+        })
         .filter((l) => l.quantity > 0),
+    );
+  }
+
+  function updateLineDiscount(variantId: string, amount: string) {
+    setCart((prev) =>
+      prev.map((l) =>
+        l.variantId === variantId
+          ? { ...l, discountAmount: Math.min(Math.max(Number(amount) || 0, 0), l.unitPrice * l.quantity) }
+          : l
+      )
     );
   }
 
@@ -224,7 +239,6 @@ export function POSPage() {
 
   function resetCart() {
     setCart([]);
-    setDiscount("");
     setCustomerId("");
     setOnCredit(false);
     setPaymentLines([{ method: "CASH", amount: "" }]);
@@ -319,12 +333,13 @@ export function POSPage() {
         data: {
           warehouseId: activeWarehouseId,
           customerId: customerId || null,
-          discountAmount,
+          discountAmount: 0, // No global invoice discount anymore
           ...(customDate ? { createdAt: new Date(customDate).toISOString() } : {}),
           items: cart.map((l) => ({
             variantId: l.variantId,
             quantity: l.quantity,
             unitPrice: l.unitPrice,
+            discountAmount: l.discountAmount,
           })),
           payments,
         },
@@ -349,10 +364,10 @@ export function POSPage() {
           sizeName: l.sizeName,
           quantity: l.quantity,
           unitPrice: l.unitPrice,
-          lineTotal: l.unitPrice * l.quantity,
+          lineTotal: (l.unitPrice * l.quantity) - l.discountAmount,
         })),
         subtotal,
-        discountAmount,
+        discountAmount: totalDiscount,
         totalAmount: result.totalAmount,
         payments: result.payments.map(p => ({ method: p.method, amount: p.amount })),
         amountPaid: result.amountPaid,
@@ -488,9 +503,10 @@ export function POSPage() {
 
         {/* cart table */}
         <div className="grid grid-cols-12 gap-2 p-3 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-600">
-          <div className="col-span-5">المنتج</div>
+          <div className="col-span-4">المنتج</div>
           <div className="col-span-2 text-center">السعر</div>
-          <div className="col-span-3 text-center">الكمية</div>
+          <div className="col-span-2 text-center">الكمية</div>
+          <div className="col-span-2 text-center">الخصم</div>
           <div className="col-span-2 text-left">الإجمالي</div>
         </div>
         <div className="flex-1 overflow-y-auto p-2 space-y-2 bg-slate-50">
@@ -506,7 +522,7 @@ export function POSPage() {
                 className="grid grid-cols-12 gap-2 items-center p-3 bg-white rounded-xl border border-slate-100 shadow-sm"
                 data-testid={`cart-line-${l.variantId}`}
               >
-                <div className="col-span-5 flex items-center gap-2">
+                <div className="col-span-4 flex items-center gap-2">
                   <button
                     onClick={() => removeLine(l.variantId)}
                     className="text-slate-300 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50"
@@ -524,7 +540,7 @@ export function POSPage() {
                 <div className="col-span-2 text-center font-bold text-slate-700 text-sm">
                   {money(l.unitPrice)}
                 </div>
-                <div className="col-span-3 flex items-center justify-center">
+                <div className="col-span-2 flex items-center justify-center">
                   <div className="flex items-center bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
                     <button
                       onClick={() => updateQty(l.variantId, 1)}
@@ -543,8 +559,19 @@ export function POSPage() {
                     </button>
                   </div>
                 </div>
+                <div className="col-span-2 flex items-center justify-center">
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={l.discountAmount || ""}
+                    onChange={(e) => updateLineDiscount(l.variantId, e.target.value)}
+                    placeholder="0"
+                    className="w-14 text-center bg-slate-50 border border-slate-200 rounded-lg py-1 px-1 text-sm font-bold focus:outline-none focus:border-amber-500"
+                    dir="ltr"
+                  />
+                </div>
                 <div className="col-span-2 text-left font-black text-slate-800">
-                  {money(l.unitPrice * l.quantity)}
+                  {money((l.unitPrice * l.quantity) - l.discountAmount)}
                 </div>
               </div>
             ))
@@ -707,19 +734,6 @@ export function POSPage() {
             )}
           </div>
 
-          <div className="mt-4">
-            <label className="block text-xs font-bold text-slate-700 mb-1.5">خصم على الفاتورة</label>
-            <input
-              value={discount}
-              onChange={(e) => setDiscount(e.target.value)}
-              inputMode="decimal"
-              placeholder="0.00"
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-amber-500 font-bold"
-              dir="ltr"
-              data-testid="input-discount"
-            />
-          </div>
-
           {error && (
             <div className="mt-4 bg-red-50 text-red-700 text-sm font-bold rounded-xl p-3" data-testid="text-error">
               {error}
@@ -734,10 +748,10 @@ export function POSPage() {
               <span>المجموع الفرعي:</span>
               <span className="font-bold">{money(subtotal)} {CUR}</span>
             </div>
-            {discountAmount > 0 && (
+            {totalDiscount > 0 && (
               <div className="flex justify-between text-red-300 text-sm">
-                <span>الخصم:</span>
-                <span className="font-bold">- {money(discountAmount)} {CUR}</span>
+                <span>الخصم الإجمالي:</span>
+                <span className="font-bold">- {money(totalDiscount)} {CUR}</span>
               </div>
             )}
             <div className="h-px bg-slate-700 my-1" />

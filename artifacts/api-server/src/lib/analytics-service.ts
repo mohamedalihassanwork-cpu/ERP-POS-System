@@ -37,7 +37,7 @@ export class AnalyticsService {
   static async getSalesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(invoicesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(invoicesTable.createdAt, computeShiftEnd(shiftHour, toDate)));
+    if (toDate) conditions.push(lte(invoicesTable.createdAt, toDate));
 
     const [salesAgg] = await db
       .select({
@@ -53,7 +53,7 @@ export class AnalyticsService {
   static async getPurchasesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(purchaseInvoicesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(purchaseInvoicesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, computeShiftEnd(shiftHour, toDate)));
+    if (toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, toDate));
 
     const [purchAgg] = await db
       .select({
@@ -68,7 +68,7 @@ export class AnalyticsService {
   static async getPurchaseReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(purchaseReturnsTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(purchaseReturnsTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(purchaseReturnsTable.createdAt, computeShiftEnd(shiftHour, toDate)));
+    if (toDate) conditions.push(lte(purchaseReturnsTable.createdAt, toDate));
 
     const [retAgg] = await db
       .select({
@@ -83,7 +83,7 @@ export class AnalyticsService {
   static async getExpensesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(expensesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(expensesTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(expensesTable.createdAt, computeShiftEnd(shiftHour, toDate)));
+    if (toDate) conditions.push(lte(expensesTable.createdAt, toDate));
 
     const [expAgg] = await db
       .select({
@@ -168,7 +168,7 @@ export class AnalyticsService {
     const conditions: SQL[] = [eq(salesReturnsTable.storeId, storeId)];
     // FIX: use salesReturnsTable.createdAt (not invoicesTable.createdAt)
     if (fromDate) conditions.push(gte(salesReturnsTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(salesReturnsTable.createdAt, computeShiftEnd(shiftHour, toDate)));
+    if (toDate) conditions.push(lte(salesReturnsTable.createdAt, toDate));
 
     const [retAgg] = await db
       .select({
@@ -183,7 +183,7 @@ export class AnalyticsService {
   static async getSalariesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
     const conditions: SQL[] = [eq(salaryRecordsTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(salaryRecordsTable.createdAt, fromDate));
-    if (toDate) conditions.push(lte(salaryRecordsTable.createdAt, computeShiftEnd(shiftHour, toDate)));
+    if (toDate) conditions.push(lte(salaryRecordsTable.createdAt, toDate));
 
     const [salAgg] = await db
       .select({

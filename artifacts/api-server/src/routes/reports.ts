@@ -56,10 +56,18 @@ function dateStr(d: Date): string {
 // Adapter helpers used throughout reports.ts.
 // shiftHour defaults to 11 for backward compat; pass from store_settings for accuracy.
 function shiftStart(d: Date | string, shiftHour = 11): Date {
-  return computeShiftStart(shiftHour, new Date(d));
+  const dt = new Date(d);
+  // Do not use computeShiftStart here because it expects a real timestamp and steps back 
+  // if the time is before shiftHour. Here we have a calendar date (midnight) and we want 
+  // the shift starting on that specific calendar date.
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), shiftHour, 0, 0, 0);
 }
 function shiftEnd(d: Date | string, shiftHour = 11): Date {
-  return computeShiftEnd(shiftHour, new Date(d));
+  const start = shiftStart(d, shiftHour);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  end.setMilliseconds(end.getMilliseconds() - 1);
+  return end;
 }
 
 const variantLabel = sql<
@@ -301,10 +309,12 @@ router.get(
     const storeId = req.auth!.storeId;
     const q = GetProfitLossReportQueryParams.parse(req.query);
 
-    const salesAgg = await AnalyticsService.getSalesKPIs(storeId, q.fromDate, q.toDate);
-    const returnAgg = await AnalyticsService.getSalesReturnsKPIs(storeId, q.fromDate, q.toDate);
-    const expAgg = await AnalyticsService.getExpensesKPIs(storeId, q.fromDate, q.toDate);
-    const salaryAgg = await AnalyticsService.getSalariesKPIs(storeId, q.fromDate, q.toDate);
+    const start = q.fromDate ? shiftStart(q.fromDate) : undefined;
+    const end = q.toDate ? shiftEnd(q.toDate) : undefined;
+    const salesAgg = await AnalyticsService.getSalesKPIs(storeId, start, end);
+    const returnAgg = await AnalyticsService.getSalesReturnsKPIs(storeId, start, end);
+    const expAgg = await AnalyticsService.getExpensesKPIs(storeId, start, end);
+    const salaryAgg = await AnalyticsService.getSalariesKPIs(storeId, start, end);
 
     const revenue = salesAgg.revenue ?? 0;
     const salesReturns = returnAgg.total ?? 0;

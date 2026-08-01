@@ -61,6 +61,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "customers.create", labelAr: "إضافة عميل" },
       { key: "customers.edit", labelAr: "تعديل عميل" },
       { key: "customers.delete", labelAr: "حذف عميل" },
+      { key: "customers.payment", labelAr: "تسديد دفعات العملاء" },
     ],
   },
   {
