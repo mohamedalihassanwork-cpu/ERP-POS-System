@@ -833,16 +833,29 @@ function DailyTransactionsReport() {
         </div>
         <div>
           <label className="block text-sm font-bold text-slate-700 mb-1">الموظف (الكاشير)</label>
-          <select
-            value={userId}
-            onChange={(e) => setUserId(e.target.value)}
-            className="border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-slate-50 min-w-[200px]"
-          >
-            <option value="">الكل</option>
-            {usersQ.data?.items?.map(u => (
-              <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
-            ))}
-          </select>
+          <div className="relative min-w-[220px]">
+            <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </span>
+            <select
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              className="w-full appearance-none border border-slate-200 rounded-xl pr-9 pl-8 py-2.5 text-sm font-medium text-slate-700 bg-white shadow-sm hover:border-amber-400 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all cursor-pointer"
+            >
+              <option value="">— الكل —</option>
+              {usersQ.data?.items?.map(u => (
+                <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+              ))}
+            </select>
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </span>
+          </div>
         </div>
       </div>
 
