@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import {
   ShoppingBag,
@@ -29,7 +29,6 @@ import {
   getSearchProductsQueryKey,
   useGetProduct,
   useUpdatePurchase,
-  useListTreasuryAccounts,
   ApiError,
   type Product,
   type ProductVariant,
@@ -40,6 +39,7 @@ import { PageHeader } from "@/components/page-header";
 import { Modal } from "@/components/modal";
 import { QuickProductModal } from "@/components/quick-product-modal";
 import { useAuth } from "@/lib/auth";
+import { TreasurySelect } from "@/components/treasury-select";
 
 const CUR = "ج.م";
 
@@ -113,46 +113,8 @@ interface PurchaseLine {
   quantity: number;
 }
 
-export function TreasurySelect({
-  value,
-  onChange,
-  hideBalance,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  hideBalance?: boolean;
-}) {
-  const accountsQuery = useListTreasuryAccounts();
-  const accounts = (accountsQuery.data ?? []).filter((a) => a.isActive);
+// TreasurySelect is imported from @/components/treasury-select
 
-  useEffect(() => {
-    if (!value && accounts.length > 0) {
-      const mainSafe = accounts.find((a) => a.type === "MAIN_SAFE") || accounts[0];
-      if (mainSafe) onChange(mainSafe.id);
-    }
-  }, [accounts, value, onChange]);
-
-  return (
-    <div className="mt-2">
-      <label className="block text-xs font-bold text-slate-700 mb-1.5">
-        الخزينة
-      </label>
-      <select
-        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        data-testid="select-treasury"
-      >
-        <option value="">— اختر الخزينة —</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.name} {hideBalance ? "" : `(${money(a.balance)})`}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 const PAY_METHODS: { value: Exclude<PayMethod, "CREDIT">; label: string }[] = [
   { value: "CASH", label: "نقدي" },

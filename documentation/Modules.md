@@ -325,6 +325,23 @@ Cash and payment channel management. The treasury page adapts its view based on 
 - Manual correction of a treasury account balance
 - Posts both a treasury transaction and a journal entry to Treasury Variance (6000)
 
+### Shared `TreasurySelect` Component
+
+`components/treasury-select.tsx` is a reusable treasury account picker used on every screen where a treasury must be selected (Purchases, Purchase Returns, Finance: Expenses / Salaries / Advances / Equity, and the Transfer Modal on the Treasury page).
+
+**Admin behavior** (when `GET /api/treasury/accounts` returns `userName` for each account):
+- Options are **grouped by owner** using `<optgroup>` elements (one group per employee, Main Safe first)
+- Each option shows: `اسم الحساب · اسم الموظف · الرصيد`
+- This allows the administrator to clearly identify which treasury belongs to whom even when hundreds of accounts are present
+
+**Cashier behavior** (no `userName` in response):
+- Flat list rendered — identical to the original single-option display
+- No grouping overhead
+
+**Props**: `value`, `onChange`, `hideBalance`, `defaultType`, `label`, `className`, `selectClassName`, `labelClassName`, `testId`
+
+The `TreasuryAccountWithOwner` interface extends the generated `TreasuryAccount` type with optional `userName` and `userId` fields (returned by the server for admin users but absent from the generated Zod schema).
+
 ---
 
 ## 17. Finance & Expenses (`/finance`)

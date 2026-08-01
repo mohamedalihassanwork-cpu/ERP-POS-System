@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Landmark,
   Loader2,
@@ -35,7 +35,6 @@ import {
   useListEquityMovements,
   useCreateEquityMovement,
   useDeleteEquityMovement,
-  useListTreasuryAccounts,
   ApiError,
   type ExpenseCategory,
   type Employee,
@@ -45,6 +44,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Modal } from "@/components/modal";
+import { TreasurySelect } from "@/components/treasury-select";
 import { openCashDrawer } from "@/lib/printer-settings";
 
 const inputClass =
@@ -212,44 +212,7 @@ function SubmitButton({
   );
 }
 
-function TreasurySelect({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const accountsQuery = useListTreasuryAccounts();
-  const accounts = (accountsQuery.data ?? []).filter((a) => a.isActive);
-
-  useEffect(() => {
-    if (!value && accounts.length > 0) {
-      const defaultDrawer = accounts.find((a) => a.type === "CASH") || accounts[0];
-      if (defaultDrawer) onChange(defaultDrawer.id);
-    }
-  }, [accounts, value, onChange]);
-
-  return (
-    <div>
-      <label className="block text-sm font-bold text-slate-700 mb-2">
-        الخزينة <span className="text-red-500">*</span>
-      </label>
-      <select
-        className={inputClass}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        data-testid="select-treasury"
-      >
-        <option value="">اختر الخزينة</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.name} ({money(a.balance)})
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
+// TreasurySelect is imported from @/components/treasury-select
 
 function Field({
   label,
@@ -583,7 +546,14 @@ function ExpensesTab({ canManage }: { canManage: boolean }) {
               data-testid="input-expense-date"
             />
           </Field>
-          <TreasurySelect value={treasuryAccountId} onChange={setTreasuryAccountId} />
+          <TreasurySelect
+            value={treasuryAccountId}
+            onChange={setTreasuryAccountId}
+            defaultType="CASH"
+            className=""
+            selectClassName="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition"
+            labelClassName="block text-sm font-bold text-slate-700 mb-2"
+          />
           <Field label="البيان">
             <input
               className={inputClass}
@@ -1175,7 +1145,14 @@ function PaySalaryModal({
             <span className="font-bold text-slate-800">{money(salary.netAmount)}</span>
           </div>
         </div>
-        <TreasurySelect value={treasuryAccountId} onChange={setTreasuryAccountId} />
+        <TreasurySelect
+          value={treasuryAccountId}
+          onChange={setTreasuryAccountId}
+          defaultType="CASH"
+          className=""
+          selectClassName="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition"
+          labelClassName="block text-sm font-bold text-slate-700 mb-2"
+        />
         {error && <ErrorBox message={error} />}
         <button
           type="submit"
@@ -1346,7 +1323,14 @@ function AdvancesTab({ canManage }: { canManage: boolean }) {
               data-testid="input-advance-date"
             />
           </Field>
-          <TreasurySelect value={treasuryAccountId} onChange={setTreasuryAccountId} />
+          <TreasurySelect
+            value={treasuryAccountId}
+            onChange={setTreasuryAccountId}
+            defaultType="CASH"
+            className=""
+            selectClassName="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition"
+            labelClassName="block text-sm font-bold text-slate-700 mb-2"
+          />
           <Field label="ملاحظات">
             <input
               className={inputClass}
@@ -1547,7 +1531,14 @@ function EquityTab({ canManage }: { canManage: boolean }) {
               data-testid="input-equity-date"
             />
           </Field>
-          <TreasurySelect value={treasuryAccountId} onChange={setTreasuryAccountId} />
+          <TreasurySelect
+            value={treasuryAccountId}
+            onChange={setTreasuryAccountId}
+            defaultType="CASH"
+            className=""
+            selectClassName="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition"
+            labelClassName="block text-sm font-bold text-slate-700 mb-2"
+          />
           <Field label="البيان">
             <input
               className={inputClass}

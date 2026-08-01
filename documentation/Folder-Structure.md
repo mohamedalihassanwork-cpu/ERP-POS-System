@@ -154,6 +154,7 @@ artifacts/pos/
 │   │   ├── a4-invoice.tsx  ← A4 invoice print template
 │   │   ├── barcode-label-print-modal.tsx ← Barcode label sheet printing
 │   │   ├── quick-product-modal.tsx ← Inline product creation from POS screen
+│   │   ├── treasury-select.tsx ← Shared treasury account picker with optgroup grouping (admin-aware)
 │   │   └── ui/             ← shadcn/ui Radix-based component library
 │   ├── hooks/
 │   │   ├── use-toast.ts    ← Sonner-compatible toast hook

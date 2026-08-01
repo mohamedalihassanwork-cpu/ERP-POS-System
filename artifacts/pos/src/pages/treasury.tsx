@@ -33,6 +33,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { Modal } from "@/components/modal";
+import { type TreasuryAccountWithOwner } from "@/components/treasury-select";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,6 +125,44 @@ function parseArabicNumber(val: string | number): number {
 function toArabicNumerals(val: string): string {
   const arabicNumbers = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
   return val.replace(/[0-9]/g, (d) => arabicNumbers[Number(d)]);
+}
+
+/**
+ * Build a rich, context-aware label for treasury accounts inside the
+ * TransferModal selects. Mirrors the logic in the shared TreasurySelect.
+ * Format: "اسم الحساب · اسم المالك · الرصيد"
+ */
+function transferOptionLabel(account: TreasuryAccountWithOwner): string {
+  const parts: string[] = [account.name];
+  if (account.userName) parts.push(account.userName);
+  parts.push(`رصيد: ${money(account.balance)}`);
+  return parts.join(" · ");
+}
+
+/** Group accounts by owner for <optgroup> rendering in TransferModal. */
+function groupByOwner(
+  accounts: TreasuryAccountWithOwner[],
+): { mainSafe: TreasuryAccountWithOwner[]; ownerGroups: [string, TreasuryAccountWithOwner[]][] } {
+  const TYPE_ORDER: Record<string, number> = {
+    MAIN_SAFE: 0, CASH: 1, CARD: 2, INSTAPAY: 3, WALLET: 4,
+  };
+  const mainSafe = accounts
+    .filter((a) => a.type === "MAIN_SAFE")
+    .sort((a, b) => (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99));
+  const drawers = accounts.filter((a) => a.type !== "MAIN_SAFE");
+  const hasOwners = drawers.some((a) => Boolean(a.userName));
+  if (!hasOwners) return { mainSafe, ownerGroups: [] };
+  const map = new Map<string, TreasuryAccountWithOwner[]>();
+  for (const a of drawers) {
+    const key = a.userName ?? "";
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(a);
+  }
+  for (const g of map.values()) {
+    g.sort((a, b) => (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99));
+  }
+  const ownerGroups = [...map.entries()].sort(([a], [b]) => a.localeCompare(b, "ar"));
+  return { mainSafe, ownerGroups };
 }
 
 const ACCOUNT_ICONS: Record<string, React.ReactNode> = {
@@ -225,7 +264,7 @@ export function TreasuryPage() {
   const [showTransfer, setShowTransfer] = useState(false);
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
 
-  const accounts = accountsQuery.data ?? [];
+  const accounts = (accountsQuery.data ?? []) as TreasuryAccountWithOwner[];
   const transactions = txQuery.data?.items ?? [];
   const currentDay = currentDayQuery.data?.operationalDay ?? null;
   const days = daysQuery.data?.items ?? [];
@@ -247,17 +286,16 @@ export function TreasuryPage() {
   // Build sorted unique owner list from all accounts
   const uniqueOwners = useMemo(() => {
     const names = accounts
-      .map((a) => (a as any).userName as string | null | undefined)
+      .map((a) => a.userName)
       .filter((n): n is string => Boolean(n));
     return [...new Set(names)];
   }, [accounts]);
 
   // Apply owner filter across all accounts
-  const ownerOf = (a: TreasuryAccount) =>
-    (a as any).userName as string | null | undefined;
+  const ownerOf = (a: TreasuryAccountWithOwner) => a.userName;
   const showMainSafe =
     !selectedOwnerName ||
-    ownerOf(mainSafe ?? ({} as TreasuryAccount)) === selectedOwnerName;
+    ownerOf(mainSafe ?? ({} as TreasuryAccountWithOwner)) === selectedOwnerName;
   const drawerAccounts = selectedOwnerName
     ? allDrawerAccounts.filter((a) => ownerOf(a) === selectedOwnerName)
     : allDrawerAccounts;
@@ -1410,7 +1448,7 @@ function TransferModal({
   accounts,
   onClose,
 }: {
-  accounts: TreasuryAccount[];
+  accounts: TreasuryAccountWithOwner[];
   onClose: () => void;
 }) {
   const [fromAccountId, setFromAccountId] = useState(accounts[0]?.id || "");
@@ -1457,11 +1495,31 @@ function TransferModal({
             value={fromAccountId}
             onChange={(e) => setFromAccountId(e.target.value)}
           >
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name} — رصيد: {money(a.balance)}
-              </option>
-            ))}
+            {(() => {
+              const { mainSafe, ownerGroups } = groupByOwner(accounts);
+              return ownerGroups.length > 0 ? (
+                <>
+                  {mainSafe.length > 0 && (
+                    <optgroup label="الخزينة الرئيسية">
+                      {mainSafe.map((a) => (
+                        <option key={a.id} value={a.id}>{transferOptionLabel(a)}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {ownerGroups.map(([owner, group]) => (
+                    <optgroup key={owner || "__unnamed__"} label={owner || "بدون مستخدم"}>
+                      {group.map((a) => (
+                        <option key={a.id} value={a.id}>{transferOptionLabel(a)}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </>
+              ) : (
+                accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{transferOptionLabel(a)}</option>
+                ))
+              );
+            })()}
           </select>
         </div>
         <div>
@@ -1473,14 +1531,33 @@ function TransferModal({
             value={toAccountId}
             onChange={(e) => setToAccountId(e.target.value)}
           >
-            <option value="">-- اختر الخزينة الوجهة --</option>
-            {accounts
-              .filter((a) => a.id !== fromAccountId)
-              .map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name} — رصيد: {money(a.balance)}
-                </option>
-              ))}
+            <option value="">— اختر الخزينة الوجهة —</option>
+            {(() => {
+              const filtered = accounts.filter((a) => a.id !== fromAccountId);
+              const { mainSafe, ownerGroups } = groupByOwner(filtered);
+              return ownerGroups.length > 0 ? (
+                <>
+                  {mainSafe.length > 0 && (
+                    <optgroup label="الخزينة الرئيسية">
+                      {mainSafe.map((a) => (
+                        <option key={a.id} value={a.id}>{transferOptionLabel(a)}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {ownerGroups.map(([owner, group]) => (
+                    <optgroup key={owner || "__unnamed__"} label={owner || "بدون مستخدم"}>
+                      {group.map((a) => (
+                        <option key={a.id} value={a.id}>{transferOptionLabel(a)}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </>
+              ) : (
+                filtered.map((a) => (
+                  <option key={a.id} value={a.id}>{transferOptionLabel(a)}</option>
+                ))
+              );
+            })()}
           </select>
         </div>
         <div>

@@ -8,13 +8,13 @@ import {
   useGetPurchase,
   getGetPurchaseQueryKey,
   useCreatePurchaseReturn,
-  useListTreasuryAccounts,
   ApiError,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { PageHeader } from "@/components/page-header";
 import { Modal } from "@/components/modal";
 import { openCashDrawer } from "@/lib/printer-settings";
+import { TreasurySelect } from "@/components/treasury-select";
 
 const CUR = "ج.م";
 
@@ -41,46 +41,8 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
-export function TreasurySelect({
-  value,
-  onChange,
-  hideBalance,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  hideBalance?: boolean;
-}) {
-  const accountsQuery = useListTreasuryAccounts();
-  const accounts = (accountsQuery.data ?? []).filter((a) => a.isActive);
+// TreasurySelect is imported from @/components/treasury-select
 
-  useEffect(() => {
-    if (!value && accounts.length > 0) {
-      const mainSafe = accounts.find((a) => a.type === "MAIN_SAFE") || accounts[0];
-      if (mainSafe) onChange(mainSafe.id);
-    }
-  }, [accounts, value, onChange]);
-
-  return (
-    <div className="mt-2">
-      <label className="block text-xs font-bold text-slate-700 mb-1.5">
-        الخزينة
-      </label>
-      <select
-        className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        data-testid="select-treasury"
-      >
-        <option value="">— اختر الخزينة —</option>
-        {accounts.map((a) => (
-          <option key={a.id} value={a.id}>
-            {a.name} {hideBalance ? "" : `(${money(a.balance)})`}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
 
 export function PurchaseReturnsPage() {
   const [page, setPage] = useState(1);
@@ -274,7 +236,6 @@ function CreateReturnModal({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [refundMethod, setRefundMethod] = useState("CASH");
   const [treasuryAccountId, setTreasuryAccountId] = useState("");
-  const { data: treasuries = [] } = useListTreasuryAccounts();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -293,13 +254,6 @@ function CreateReturnModal({
   // Only run once when purchase first resolves
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [purchase?.id]);
-
-  useEffect(() => {
-    if (!treasuryAccountId && treasuries.length > 0) {
-      const mainSafe = treasuries.find((t) => t.type === "MAIN_SAFE");
-      if (mainSafe) setTreasuryAccountId(mainSafe.id);
-    }
-  }, [treasuryAccountId, treasuries]);
 
   function setQty(itemId: string, value: number, max: number) {
     setQuantities((prev) => ({ ...prev, [itemId]: Math.max(0, Math.min(value, max)) }));
