@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   Wallet,
   Loader2,
@@ -18,6 +18,9 @@ import {
   ChevronUp,
   ShieldCheck,
   TrendingUp,
+  Search,
+  X,
+  Filter,
 } from "lucide-react";
 import {
   useListTreasuryAccounts,
@@ -227,11 +230,48 @@ export function TreasuryPage() {
   const currentDay = currentDayQuery.data?.operationalDay ?? null;
   const days = daysQuery.data?.items ?? [];
 
+  // ── Filter state ──────────────────────────────────────────────────────────
+  const [selectedOwnerName, setSelectedOwnerName] = useState<string | null>(
+    null,
+  );
+
+  // Reset filter whenever accounts list changes (e.g. after open/close day)
+  useEffect(() => {
+    setSelectedOwnerName(null);
+  }, [accounts.length]);
+
   // Split accounts: MAIN_SAFE goes first as the hero card
   const mainSafe = accounts.find((a) => a.type === "MAIN_SAFE") ?? null;
-  const drawerAccounts = accounts.filter((a) => a.type !== "MAIN_SAFE");
+  const allDrawerAccounts = accounts.filter((a) => a.type !== "MAIN_SAFE");
 
-  // Total balance across all accounts
+  // Build sorted unique owner list from all accounts
+  const uniqueOwners = useMemo(() => {
+    const names = accounts
+      .map((a) => (a as any).userName as string | null | undefined)
+      .filter((n): n is string => Boolean(n));
+    return [...new Set(names)];
+  }, [accounts]);
+
+  // Apply owner filter across all accounts
+  const ownerOf = (a: TreasuryAccount) =>
+    (a as any).userName as string | null | undefined;
+  const showMainSafe =
+    !selectedOwnerName ||
+    ownerOf(mainSafe ?? ({} as TreasuryAccount)) === selectedOwnerName;
+  const drawerAccounts = selectedOwnerName
+    ? allDrawerAccounts.filter((a) => ownerOf(a) === selectedOwnerName)
+    : allDrawerAccounts;
+
+  // Filter transactions to selected owner
+  const filteredTransactions = useMemo(
+    () =>
+      selectedOwnerName
+        ? transactions.filter((t) => t.userName === selectedOwnerName)
+        : transactions,
+    [transactions, selectedOwnerName],
+  );
+
+  // Total balance across all accounts (always from full list)
   const totalBalance = accounts.reduce(
     (sum, a) => sum + Number(a.balance ?? 0),
     0,
@@ -289,6 +329,15 @@ export function TreasuryPage() {
           />
         )}
 
+        {/* ── Filter toolbar ── */}
+        {!accountsQuery.isLoading && accounts.length > 0 && uniqueOwners.length > 0 && (
+          <TreasuryFilterBar
+            owners={uniqueOwners}
+            selectedOwnerName={selectedOwnerName}
+            onSelect={setSelectedOwnerName}
+          />
+        )}
+
         {/* ── Account cards ── */}
         {accountsQuery.isLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -310,11 +359,11 @@ export function TreasuryPage() {
         ) : (
           <div className="space-y-4">
             {/* ── Main Safe Hero Card ── */}
-            {mainSafe && (
+            {mainSafe && showMainSafe && (
               <MainSafeHeroCard
                 account={mainSafe}
                 totalBalance={totalBalance}
-                drawerCount={drawerAccounts.length}
+                drawerCount={allDrawerAccounts.length}
               />
             )}
 
@@ -342,6 +391,19 @@ export function TreasuryPage() {
                 </div>
               </div>
             )}
+
+            {/* ── No results after filter ── */}
+            {selectedOwnerName &&
+              !showMainSafe &&
+              drawerAccounts.length === 0 && (
+                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-10 text-center">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+                    <Filter size={22} />
+                  </div>
+                  <p className="font-bold text-slate-600 mb-1">لا توجد نتائج</p>
+                  <p className="text-slate-400 text-sm">لا توجد خزائن مسجلة لـ «{selectedOwnerName}».</p>
+                </div>
+              )}
           </div>
         )}
 
@@ -369,7 +431,7 @@ export function TreasuryPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {transactions.map((t) => (
+                    {filteredTransactions.map((t) => (
                       <tr
                         key={t.id}
                         className="hover:bg-slate-50 transition-colors"
@@ -414,7 +476,9 @@ export function TreasuryPage() {
                 </table>
               ) : (
                 <p className="text-slate-400 text-center py-12">
-                  لا توجد حركات.
+                  {selectedOwnerName
+                    ? `لا توجد حركات لـ «${selectedOwnerName}».`
+                    : "لا توجد حركات."}
                 </p>
               )}
             </div>
@@ -479,6 +543,248 @@ export function TreasuryPage() {
           onClose={() => setAdjustmentAccount(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Treasury Filter Bar — filters by account owner (person)
+// ---------------------------------------------------------------------------
+
+interface TreasuryFilterBarProps {
+  owners: string[];
+  selectedOwnerName: string | null;
+  onSelect: (ownerName: string | null) => void;
+}
+
+function TreasuryFilterBar({
+  owners,
+  selectedOwnerName,
+  onSelect,
+}: TreasuryFilterBarProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+        setSearch("");
+      }
+    }
+    if (open) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [open]);
+
+  // Auto-focus search when dropdown opens
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 50);
+    }
+  }, [open]);
+
+  const filteredOwners = owners.filter((name) =>
+    name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  function handleSelect(name: string | null) {
+    onSelect(name);
+    setOpen(false);
+    setSearch("");
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="bg-white rounded-2xl border border-slate-100 shadow-sm px-5 py-4"
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Filter label */}
+        <div className="flex items-center gap-2 text-slate-500 shrink-0">
+          <Filter size={15} />
+          <span className="text-sm font-bold">تصفية بالمالك</span>
+        </div>
+
+        {/* Dropdown trigger + panel wrapper */}
+        <div className="flex-1 min-w-52 relative">
+          {/* Trigger button */}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className={`w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
+              selectedOwnerName
+                ? "border-amber-300 bg-amber-50 text-amber-800"
+                : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300 hover:bg-white"
+            }`}
+            data-testid="treasury-filter-trigger"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              {/* Person avatar bubble */}
+              {selectedOwnerName ? (
+                <span className="w-6 h-6 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center text-xs font-black shrink-0 select-none">
+                  {selectedOwnerName.charAt(0)}
+                </span>
+              ) : (
+                <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center shrink-0">
+                  <Search size={12} />
+                </span>
+              )}
+              <span className="truncate">
+                {selectedOwnerName ?? "جميع الأشخاص"}
+              </span>
+            </span>
+            <span className="flex items-center gap-1 shrink-0">
+              {selectedOwnerName && (
+                <span
+                  role="button"
+                  className="w-5 h-5 rounded-full bg-amber-200 text-amber-700 flex items-center justify-center hover:bg-amber-300 transition-colors cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSelect(null);
+                  }}
+                  title="مسح التصفية"
+                >
+                  <X size={11} />
+                </span>
+              )}
+              <ChevronDown
+                size={15}
+                className={`text-slate-400 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+              />
+            </span>
+          </button>
+
+          {/* Dropdown panel */}
+          {open && (
+            <div className="absolute top-full mt-2 w-full min-w-64 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
+              {/* Search input */}
+              <div className="px-3 pt-3 pb-2">
+                <div className="relative">
+                  <Search
+                    size={14}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                  />
+                  <input
+                    ref={searchRef}
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="بحث عن شخص..."
+                    className="w-full pr-9 pl-3 py-2 text-sm rounded-lg border border-slate-200 focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 outline-none transition"
+                    data-testid="treasury-filter-search"
+                  />
+                </div>
+              </div>
+
+              {/* Options list */}
+              <div className="max-h-64 overflow-y-auto pb-2">
+                {/* "All" option */}
+                <button
+                  type="button"
+                  onClick={() => handleSelect(null)}
+                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-right ${
+                    !selectedOwnerName
+                      ? "bg-amber-50 text-amber-800 font-bold"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                  data-testid="treasury-filter-option-all"
+                >
+                  <span
+                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                      !selectedOwnerName
+                        ? "bg-amber-400 text-slate-900"
+                        : "bg-slate-200 text-slate-400"
+                    }`}
+                  >
+                    ✦
+                  </span>
+                  <span className="flex-1">جميع الأشخاص</span>
+                  <span className="text-xs text-slate-400 tabular-nums bg-slate-100 px-2 py-0.5 rounded-full">
+                    {owners.length}
+                  </span>
+                </button>
+
+                {/* Divider */}
+                {filteredOwners.length > 0 && (
+                  <div className="mx-3 my-1 h-px bg-slate-100" />
+                )}
+
+                {/* Owner options */}
+                {filteredOwners.length > 0 ? (
+                  filteredOwners.map((name) => {
+                    const isSelected = selectedOwnerName === name;
+                    return (
+                      <button
+                        key={name}
+                        type="button"
+                        onClick={() => handleSelect(name)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm transition-colors text-right ${
+                          isSelected
+                            ? "bg-amber-50 text-amber-800 font-bold"
+                            : "text-slate-600 hover:bg-slate-50"
+                        }`}
+                        data-testid={`treasury-filter-option-${name}`}
+                      >
+                        {/* Avatar with first letter */}
+                        <span
+                          className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-black shrink-0 select-none ${
+                            isSelected
+                              ? "bg-amber-400 text-slate-900"
+                              : "bg-slate-200 text-slate-600"
+                          }`}
+                        >
+                          {name.charAt(0)}
+                        </span>
+                        <span className="flex-1 min-w-0 truncate">{name}</span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-slate-400 text-sm text-center py-6">
+                    لا توجد نتائج
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Active filter chip */}
+        {selectedOwnerName && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs text-slate-400">تصفية نشطة:</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full bg-amber-100 text-amber-800">
+              <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-900 flex items-center justify-center text-[10px] font-black">
+                {selectedOwnerName.charAt(0)}
+              </span>
+              {selectedOwnerName}
+              <button
+                type="button"
+                onClick={() => handleSelect(null)}
+                className="opacity-60 hover:opacity-100 transition-opacity"
+                title="مسح التصفية"
+              >
+                <X size={11} />
+              </button>
+            </span>
+          </div>
+        )}
+
+        {/* Result count hint */}
+        {selectedOwnerName && (
+          <span className="text-xs text-slate-400 mr-auto">
+            عرض خزائن «{selectedOwnerName}»
+          </span>
+        )}
+      </div>
     </div>
   );
 }
