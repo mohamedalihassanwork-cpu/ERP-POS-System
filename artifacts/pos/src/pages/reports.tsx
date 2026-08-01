@@ -273,17 +273,20 @@ function movementTypeLabel(type: string): string {
 
 function translatePaymentMethod(method: string | null | undefined): string {
   if (!method) return "—";
-  const m = String(method).toUpperCase();
   const map: Record<string, string> = {
     CASH: "نقدي",
     CARD: "بطاقة",
     WALLET: "محفظة إلكترونية",
-    INSTAPAY: "انستا باي",
+    INSTAPAY: "إنستا باي",
     CREDIT: "آجل",
     MIXED: "متعدد",
     SPLIT: "متعدد",
   };
-  return map[m] ?? method;
+  // Handle comma-separated methods like "CASH,CREDIT" or "CARD,INSTAPAY"
+  return String(method)
+    .split(",")
+    .map((m) => map[m.trim().toUpperCase()] ?? m.trim())
+    .join(" + ");
 }
 
 function translatePaymentStatus(status: string | null | undefined): string {
@@ -330,6 +333,18 @@ function txTypeLabel(type: string): string {
     PURCHASE: "مشترى",
   };
   return map[type] ?? type;
+}
+
+function accountTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    ASSET: "أصول",
+    LIABILITY: "التزامات",
+    EQUITY: "حقوق الملكية",
+    REVENUE: "إيرادات",
+    EXPENSE: "مصروفات",
+    INCOME: "دخل",
+  };
+  return map[String(type).toUpperCase()] ?? type;
 }
 
 function DateRange({
@@ -484,7 +499,7 @@ function TopProductsReport() {
     if (!d?.rows) return;
     exportToExcel(d.rows, `الأكثر_مبيعاً_${from}_إلى_${to}`, "الأكثر مبيعاً", [
       { header: "المنتج", key: "productName" },
-      { header: "SKU", key: "sku", formatter: (v) => v || "—" },
+      { header: "رمز الصنف", key: "sku", formatter: (v) => v || "—" },
       { header: "الكمية المباعة", key: "quantitySold" },
       { header: "الإيراد", key: "revenue" },
     ]);
@@ -495,7 +510,7 @@ function TopProductsReport() {
       <ReportHeader title="الأكثر مبيعاً" onExportExcel={handleExport} />
       <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
       <Table
-        headers={["#", "المنتج", "SKU", "الكمية المباعة", "الإيراد"]}
+        headers={["#", "المنتج", "رمز الصنف", "الكمية المباعة", "الإيراد"]}
         loading={q.isLoading}
         empty={!d || d.rows.length === 0}
       >
@@ -573,7 +588,7 @@ function InventoryReport() {
     exportToExcel(d.rows, "تقييم_المخزون", "المخزون", [
       { header: "المنتج", key: "productName" },
       { header: "النوع", key: "variantLabel", formatter: (v) => v || "—" },
-      { header: "SKU", key: "sku", formatter: (v) => v || "—" },
+      { header: "رمز الصنف", key: "sku", formatter: (v) => v || "—" },
       { header: "المخزن", key: "warehouseName", formatter: (v) => v || "—" },
       { header: "الفئة", key: "categoryName", formatter: (v) => v || "—" },
       { header: "الكمية", key: "quantity" },
@@ -595,7 +610,7 @@ function InventoryReport() {
         <SummaryStat label="إجمالي الربح" value={money(totalProfit)} color="text-amber-600" />
       </div>
       <Table
-        headers={["المنتج", "النوع", "SKU", "المخزن", "الفئة", "الكمية", "سعر التكلفة", "سعر البيع", "إجمالي تكلفة الشراء", "إجمالي قيمة البيع", "الربح"]}
+        headers={["المنتج", "النوع", "رمز الصنف", "المخزن", "الفئة", "الكمية", "سعر التكلفة", "سعر البيع", "إجمالي تكلفة الشراء", "إجمالي قيمة البيع", "الربح"]}
         loading={q.isLoading}
         empty={!d || d.rows.length === 0}
       >
@@ -633,7 +648,7 @@ function LowStockReport() {
     exportToExcel(d.rows, "نواقص_المخزون", "النواقص", [
       { header: "المنتج", key: "productName" },
       { header: "النوع", key: "variantLabel", formatter: (v) => v || "—" },
-      { header: "SKU", key: "sku", formatter: (v) => v || "—" },
+      { header: "رمز الصنف", key: "sku", formatter: (v) => v || "—" },
       { header: "المخزن", key: "warehouseName", formatter: (v) => v || "—" },
       { header: "الكمية الحالية", key: "quantity" },
       { header: "حد الطلب", key: "reorderPoint" },
@@ -648,7 +663,7 @@ function LowStockReport() {
         <SummaryStat label="عدد النواقص" value={String(d?.count ?? 0)} />
       </div>
       <Table
-        headers={["المنتج", "النوع", "SKU", "المخزن", "الكمية", "حد الطلب", "النقص"]}
+        headers={["المنتج", "النوع", "رمز الصنف", "المخزن", "الكمية", "حد الطلب", "النقص"]}
         loading={q.isLoading}
         empty={!d || d.rows.length === 0}
       >
@@ -752,8 +767,13 @@ const translateRef = (ref: string) => {
     OPENING: "رصيد افتتاحي",
     ADJUSTMENT: "تسوية يدوية",
     MANUAL: "تسوية يدوية",
+    TRANSFER: "تحويل رصيد",
     TRANSFER_IN: "تحويل وارد",
     TRANSFER_OUT: "تحويل صادر",
+    DAY_CLOSE_RESET: "إغلاق يوم تشغيلي",
+    DAY_OPEN_CARRY: "ترحيل فتح اليوم",
+    ADVANCE: "سلفة",
+    ADVANCE_REVERSAL: "إلغاء سلفة",
     ASSOCIATION_WITHDRAWAL: "سداد جمعية",
     ASSOCIATION_RETURN: "قبض جمعية",
   };
@@ -1185,7 +1205,7 @@ function AccountStatementReport() {
     if (!d?.rows) return;
     exportToExcel(d.rows, `كشف_حساب_${d.account.name}`, "كشف حساب", [
       { header: "التاريخ", key: "entryDate", formatter: (v) => formatDateTime(v) },
-      { header: "المرجع", key: "referenceType", formatter: (v) => v || "—" },
+      { header: "المرجع", key: "referenceType", formatter: (v) => v ? translateRef(v) : "—" },
       { header: "الوصف", key: "description", formatter: (v) => v || "—" },
       { header: "مدين", key: "debit" },
       { header: "دائن", key: "credit" },
@@ -1222,7 +1242,7 @@ function AccountStatementReport() {
             </div>
             <div>
               <p className="text-xs font-bold text-amber-600">نوع الحساب</p>
-              <p className="font-bold text-slate-700">{d.account.type}</p>
+              <p className="font-bold text-slate-700">{accountTypeLabel(d.account.type)}</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-3 mb-5">
@@ -1239,7 +1259,7 @@ function AccountStatementReport() {
             {d.rows.map((r) => (
               <tr key={r.id} className="text-slate-700">
                 <td className="py-2 px-3 whitespace-nowrap">{formatDateTime(r.entryDate)}</td>
-                <td className="py-2 px-3 text-xs font-mono">{r.referenceType ?? "—"}</td>
+                <td className="py-2 px-3 text-xs">{r.referenceType ? translateRef(r.referenceType) : "—"}</td>
                 <td className="py-2 px-3">{r.description ?? "—"}</td>
                 <td className="py-2 px-3 text-rose-600 font-bold">{Number(r.debit) > 0 ? money(r.debit) : "—"}</td>
                 <td className="py-2 px-3 text-emerald-700 font-bold">{Number(r.credit) > 0 ? money(r.credit) : "—"}</td>
@@ -1438,12 +1458,12 @@ function ProductInquiryReport() {
       <div className="flex flex-wrap items-end gap-3 mb-5">
         {/* Step 1: Search for a product */}
         <div className="flex-1 min-w-[220px]">
-          <label className="block text-xs font-bold text-slate-500 mb-1">بحث عن منتج (الاسم / SKU / باركود)</label>
+          <label className="block text-xs font-bold text-slate-500 mb-1">بحث عن منتج (الاسم / رمز الصنف / باركود)</label>
           <input
             type="text"
             value={search}
             onChange={(e) => { setSearch(e.target.value); setSelectedProductId(""); setVariantId(""); }}
-            placeholder="ابحث بالاسم أو الباركود أو SKU..."
+            placeholder="ابحث بالاسم أو الباركود أو رمز الصنف..."
             className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm"
           />
         </div>
@@ -1511,7 +1531,7 @@ function ProductInquiryReport() {
               )}
             </div>
             <div>
-              <p className="text-xs font-bold text-amber-600">SKU / باركود</p>
+              <p className="text-xs font-bold text-amber-600">رمز الصنف / باركود</p>
               <p className="font-mono text-sm text-slate-700">{d.variant.sku}</p>
               <p className="font-mono text-xs text-slate-500">{d.variant.barcode}</p>
             </div>

@@ -36,6 +36,19 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return fallback;
 }
 
+function translatePaymentMethod(method: string): string {
+  const map: Record<string, string> = {
+    CASH: "نقدي",
+    CARD: "بطاقة",
+    INSTAPAY: "إنستاباي",
+    WALLET: "محفظة إلكترونية",
+    CREDIT: "آجل",
+    MIXED: "متعدد",
+    SPLIT: "متعدد",
+  };
+  return map[String(method).toUpperCase()] ?? method;
+}
+
 function paymentBadge(status: string) {
   const map: Record<string, [string, string]> = {
     PAID: ["مدفوعة", "bg-green-50 text-green-700"],
@@ -393,7 +406,7 @@ function InvoiceDetailModal({ id, onClose }: { id: string; onClose: () => void }
                     key={p.id}
                     className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700"
                   >
-                    {p.method}: {money(p.amount)} {CUR}
+                    {translatePaymentMethod(p.method)}: {money(p.amount)} {CUR}
                   </span>
                 ))}
               </div>

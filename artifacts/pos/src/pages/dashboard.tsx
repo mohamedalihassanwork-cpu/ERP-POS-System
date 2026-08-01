@@ -50,6 +50,52 @@ const PAYMENT_LABELS: Record<string, string> = {
   CREDIT: "آجل",
 };
 
+function auditActionLabel(action: string): string {
+  const map: Record<string, string> = {
+    CREATE_SALE: "إنشاء فاتورة بيع",
+    RETURN_SALE: "مرتجع بيع",
+    CREATE_PURCHASE: "إنشاء فاتورة شراء",
+    RETURN_PURCHASE: "مرتجع شراء",
+    CREATE_EXPENSE: "إنشاء مصروف",
+    DELETE_EXPENSE: "حذف مصروف",
+    CREATE_CUSTOMER: "إنشاء عميل",
+    UPDATE_CUSTOMER: "تعديل عميل",
+    DELETE_CUSTOMER: "حذف عميل",
+    CREATE_SUPPLIER: "إنشاء مورد",
+    UPDATE_SUPPLIER: "تعديل مورد",
+    DELETE_SUPPLIER: "حذف مورد",
+    CREATE_PRODUCT: "إنشاء منتج",
+    UPDATE_PRODUCT: "تعديل منتج",
+    DELETE_PRODUCT: "حذف منتج",
+    CREATE_EMPLOYEE: "إنشاء موظف",
+    UPDATE_EMPLOYEE: "تعديل موظف",
+    PAY_SALARY: "صرف راتب",
+    CREATE_SALARY: "إنشاء استحقاق راتب",
+    CREATE_ADVANCE: "صرف سلفة",
+    OPEN_DAY: "فتح يوم تشغيلي",
+    CLOSE_DAY: "إغلاق يوم تشغيلي",
+    TREASURY_TRANSFER: "تحويل خزينة",
+    TREASURY_ADJUSTMENT: "تسوية خزينة",
+    CUSTOMER_PAYMENT: "تحصيل من عميل",
+    SUPPLIER_PAYMENT: "سداد لمورد",
+    CREATE_TRANSFER: "إنشاء تحويل مخزني",
+    COMPLETE_TRANSFER: "استكمال تحويل مخزني",
+    CANCEL_TRANSFER: "إلغاء تحويل مخزني",
+    STOCK_ADJUSTMENT: "تسوية مخزن",
+    LOGIN: "تسجيل دخول",
+    LOGOUT: "تسجيل خروج",
+    CREATE_USER: "إنشاء مستخدم",
+    UPDATE_USER: "تعديل مستخدم",
+    UPDATE_SETTINGS: "تعديل الإعدادات",
+    EQUITY_WITHDRAWAL: "سحب مالك",
+    EQUITY_DEPOSIT: "إيداع مالك",
+    CREATE_ASSOCIATION: "إنشاء جمعية",
+    ASSOCIATION_WITHDRAWAL: "سحب جمعية",
+    ASSOCIATION_RETURN: "قبض جمعية",
+  };
+  return map[action] ?? action;
+}
+
 const PIE_COLORS = ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ef4444", "#14b8a6"];
 
 function money(v: number | null | undefined): string {
@@ -367,7 +413,7 @@ export function DashboardPage() {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-slate-800">
-                          {log.action}
+                          {auditActionLabel(log.action)}
                         </p>
                         <p className="text-xs text-slate-400">
                           {log.userName ?? "النظام"}

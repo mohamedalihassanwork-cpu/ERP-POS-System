@@ -6,6 +6,82 @@ import { PageHeader } from "@/components/page-header";
 
 const PAGE_SIZE = 20;
 
+function auditActionLabel(action: string): string {
+  const map: Record<string, string> = {
+    CREATE_SALE: "إنشاء فاتورة بيع",
+    RETURN_SALE: "مرتجع بيع",
+    CREATE_PURCHASE: "إنشاء فاتورة شراء",
+    RETURN_PURCHASE: "مرتجع شراء",
+    CREATE_EXPENSE: "إنشاء مصروف",
+    DELETE_EXPENSE: "حذف مصروف",
+    CREATE_CUSTOMER: "إنشاء عميل",
+    UPDATE_CUSTOMER: "تعديل عميل",
+    DELETE_CUSTOMER: "حذف عميل",
+    CREATE_SUPPLIER: "إنشاء مورد",
+    UPDATE_SUPPLIER: "تعديل مورد",
+    DELETE_SUPPLIER: "حذف مورد",
+    CREATE_PRODUCT: "إنشاء منتج",
+    UPDATE_PRODUCT: "تعديل منتج",
+    DELETE_PRODUCT: "حذف منتج",
+    CREATE_EMPLOYEE: "إنشاء موظف",
+    UPDATE_EMPLOYEE: "تعديل موظف",
+    DELETE_EMPLOYEE: "حذف موظف",
+    PAY_SALARY: "صرف راتب",
+    CREATE_SALARY: "إنشاء استحقاق راتب",
+    DELETE_SALARY: "حذف راتب",
+    CREATE_ADVANCE: "صرف سلفة",
+    DELETE_ADVANCE: "حذف سلفة",
+    OPEN_DAY: "فتح يوم تشغيلي",
+    CLOSE_DAY: "إغلاق يوم تشغيلي",
+    TREASURY_TRANSFER: "تحويل خزينة",
+    TREASURY_ADJUSTMENT: "تسوية خزينة",
+    CUSTOMER_PAYMENT: "تحصيل من عميل",
+    SUPPLIER_PAYMENT: "سداد لمورد",
+    CREATE_TRANSFER: "إنشاء تحويل مخزني",
+    COMPLETE_TRANSFER: "استكمال تحويل مخزني",
+    CANCEL_TRANSFER: "إلغاء تحويل مخزني",
+    STOCK_ADJUSTMENT: "تسوية مخزن",
+    LOGIN: "تسجيل دخول",
+    LOGOUT: "تسجيل خروج",
+    CREATE_USER: "إنشاء مستخدم",
+    UPDATE_USER: "تعديل مستخدم",
+    DELETE_USER: "حذف مستخدم",
+    UPDATE_SETTINGS: "تعديل الإعدادات",
+    EQUITY_WITHDRAWAL: "سحب مالك",
+    EQUITY_DEPOSIT: "إيداع مالك",
+    CREATE_ASSOCIATION: "إنشاء جمعية",
+    UPDATE_ASSOCIATION: "تعديل جمعية",
+    ASSOCIATION_WITHDRAWAL: "سحب جمعية",
+    ASSOCIATION_RETURN: "قبض جمعية",
+  };
+  return map[action] ?? action;
+}
+
+function entityTypeLabel(type: string | null | undefined): string {
+  if (!type) return "—";
+  const map: Record<string, string> = {
+    Customer: "عميل",
+    Supplier: "مورد",
+    Product: "منتج",
+    Employee: "موظف",
+    Sale: "فاتورة بيع",
+    Purchase: "فاتورة شراء",
+    Expense: "مصروف",
+    Salary: "راتب",
+    Advance: "سلفة",
+    Transfer: "تحويل مخزني",
+    Warehouse: "مخزن",
+    User: "مستخدم",
+    Settings: "إعدادات",
+    Association: "جمعية",
+    TreasuryAccount: "حساب خزينة",
+    OperationalDay: "يوم تشغيلي",
+    StockCount: "جرد مخزن",
+    Category: "فئة",
+  };
+  return map[type] ?? type;
+}
+
 export function AuditPage() {
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
@@ -85,13 +161,13 @@ export function AuditPage() {
                       data-testid={`row-audit-${log.id}`}
                     >
                       <td className="px-6 py-4 font-bold text-slate-800">
-                        {log.action}
+                        {auditActionLabel(log.action)}
                       </td>
                       <td className="px-6 py-4 text-slate-600">
                         {log.userName ?? "النظام"}
                       </td>
-                      <td className="px-6 py-4 text-slate-500">
-                        {log.entityType ?? "—"}
+                      <td className="py-2 px-6 text-slate-500">
+                        {entityTypeLabel(log.entityType)}
                       </td>
                       <td className="px-6 py-4 text-slate-500 font-mono text-xs">
                         {log.ipAddress ?? "—"}

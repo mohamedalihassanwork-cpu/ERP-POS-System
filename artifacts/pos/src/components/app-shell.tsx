@@ -192,7 +192,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <h1 className="text-lg font-black text-white truncate">
             {user?.storeName ?? "نظام إدارة المتجر"}
           </h1>
-          <p className="text-xs text-amber-500 font-bold tracking-wide">ERP & POS SYSTEM</p>
+          <p className="text-xs text-amber-500 font-bold tracking-wide">نظام نقاط البيع والمحاسبة</p>
         </div>
       </div>
 
