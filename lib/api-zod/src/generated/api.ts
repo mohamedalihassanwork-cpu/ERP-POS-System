@@ -3242,7 +3242,10 @@ export const GetProfitLossReportResponse = zod.object({
 export const GetTreasuryReportQueryParams = zod.object({
   "fromDate": zod.coerce.date().optional(),
   "toDate": zod.coerce.date().optional(),
-  "accountId": zod.string().uuid().optional()
+  "accountId": zod.string().uuid().optional(),
+  "userId": zod.string().uuid().optional(),
+  "excludeTransfers": zod.coerce.boolean().optional(),
+  "onlyTransfers": zod.coerce.boolean().optional()
 })
 
 export const GetTreasuryReportResponse = zod.object({

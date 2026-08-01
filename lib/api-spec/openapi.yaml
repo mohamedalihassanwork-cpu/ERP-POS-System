@@ -2431,6 +2431,15 @@ paths:
         - name: accountId
           in: query
           schema: { type: string, format: uuid }
+        - name: userId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: excludeTransfers
+          in: query
+          schema: { type: boolean }
+        - name: onlyTransfers
+          in: query
+          schema: { type: boolean }
       responses:
         "200":
           description: Treasury movements

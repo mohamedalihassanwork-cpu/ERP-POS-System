@@ -352,6 +352,9 @@ router.get(
     if (q.fromDate) conditions.push(gte(treasuryTransactionsTable.createdAt, shiftStart(q.fromDate)));
     if (q.toDate) conditions.push(lte(treasuryTransactionsTable.createdAt, shiftEnd(q.toDate)));
     if (q.accountId) conditions.push(eq(treasuryTransactionsTable.treasuryAccountId, q.accountId));
+    if (q.userId) conditions.push(eq(treasuryTransactionsTable.createdBy, q.userId));
+    if (q.excludeTransfers) conditions.push(sql`${treasuryTransactionsTable.referenceType} NOT IN ('TRANSFER', 'DAY_CLOSE_RESET', 'DAY_OPEN_CARRY')`);
+    if (q.onlyTransfers) conditions.push(sql`${treasuryTransactionsTable.referenceType} IN ('TRANSFER', 'DAY_CLOSE_RESET', 'DAY_OPEN_CARRY')`);
 
     const rows = await db
       .select({

@@ -962,6 +962,7 @@ router.post("/sales/returns", requireAuth, requirePermission("sales.return"), as
         const [c] = await tx
           .select({ id: customersTable.id, currentBalance: customersTable.currentBalance })
           .from(customersTable)
+          .where(and(eq(customersTable.id, invoice.customerId), eq(customersTable.storeId, storeId)))
           .limit(1);
         if (!c) throw new Error("CUSTOMER_NOT_FOUND");
         const newBalance = toNum(c.currentBalance) - totalAmount;

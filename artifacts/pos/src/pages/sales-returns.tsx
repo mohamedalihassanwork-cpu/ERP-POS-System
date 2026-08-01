@@ -261,6 +261,9 @@ function CreateReturnModal({
       });
       setQuantities(preset);
     }
+    if (invoice && invoice.saleType === "CREDIT") {
+      setRefundMethod("CREDIT");
+    }
   // Only run once when invoice first resolves from the pre-filled term
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [invoice?.id]);
@@ -301,6 +304,7 @@ function CreateReturnModal({
       void queryClient.invalidateQueries({ queryKey: ["/api/sales/returns"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/sales/invoices"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/customers"] });
       
       // Real-time Reports Sync
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/sales-summary"] });

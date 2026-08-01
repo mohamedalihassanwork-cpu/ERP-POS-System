@@ -2129,6 +2129,9 @@ export type GetTreasuryReportParams = {
 fromDate?: string;
 toDate?: string;
 accountId?: string;
+userId?: string;
+excludeTransfers?: boolean;
+onlyTransfers?: boolean;
 };
 
 export type GetExpenseReportParams = {

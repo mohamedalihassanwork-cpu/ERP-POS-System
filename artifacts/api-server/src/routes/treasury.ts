@@ -1,5 +1,5 @@
 import { Router, type IRouter, type Request } from "express";
-import { and, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, sql, inArray } from "drizzle-orm";
 import * as z from "zod";
 import {
   db,
@@ -139,10 +139,12 @@ router.get(
       conditions.push(eq(treasuryTransactionsTable.treasuryAccountId, treasuryAccountId));
     }
 
-    // If no specific account requested and not a manager, restrict to own accounts only
-    if (!treasuryAccountId && !canViewAll) {
-      // Join to filter by userId — only show transactions for the cashier's own accounts
-      // This is handled by account ID filtering below using a subquery approach
+    // If not a manager, restrict to own accounts only
+    if (!canViewAll) {
+      const userAccountsQuery = db.select({ id: treasuryAccountsTable.id })
+        .from(treasuryAccountsTable)
+        .where(eq(treasuryAccountsTable.userId, userId));
+      conditions.push(inArray(treasuryTransactionsTable.treasuryAccountId, userAccountsQuery));
     }
 
     if (direction) {

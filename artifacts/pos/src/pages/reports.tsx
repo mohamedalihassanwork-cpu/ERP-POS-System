@@ -20,6 +20,7 @@ import {
   Clock,
   Printer,
   FileSpreadsheet,
+  ArrowRightLeft,
 } from "lucide-react";
 import { exportToExcel } from "@/lib/excel-export";
 import {
@@ -44,6 +45,7 @@ import {
   useListEmployees,
   useSearchProducts,
   useGetProduct,
+  useListUsers,
   customFetch,
 } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
@@ -106,7 +108,8 @@ type ReportTab =
   | "customer-statement"
   | "daily-sales"
   | "salary-summary"
-  | "supplier-aging";
+  | "supplier-aging"
+  | "treasury-transfers";
 
 interface TabDef {
   key: ReportTab;
@@ -132,6 +135,7 @@ const TABS: TabDef[] = [
   { key: "customer-statement", label: "كشف عميل", icon: <Users size={18} />, permission: "reports.view" },
   { key: "salary-summary", label: "ملخص الرواتب", icon: <Banknote size={18} />, permission: "reports.view" },
   { key: "daily-transactions", label: "معاملات اليوم", icon: <Activity size={18} />, permission: "reports.view" },
+  { key: "treasury-transfers", label: "تحويل بين الخزائن", icon: <ArrowRightLeft size={18} />, permission: "reports.view" },
   { key: "supplier-aging", label: "تقادم الموردين", icon: <Clock size={18} />, permission: "reports.view" },
 ];
 
@@ -190,6 +194,7 @@ export function ReportsPage() {
           {active === "salary-summary" && <SalarySummaryReport />}
           {active === "supplier-aging" && <SupplierAgingReport />}
           {active === "daily-transactions" && <DailyTransactionsReport />}
+          {active === "treasury-transfers" && <TreasuryTransfersReport />}
         </div>
       </div>
     </div>
@@ -757,11 +762,15 @@ const translateRef = (ref: string) => {
 
 function DailyTransactionsReport() {
   const [date, setDate] = useState(todayStr());
-  const params = { fromDate: date, toDate: date };
+  const [userId, setUserId] = useState<string>("");
+  
+  const params = { fromDate: date, toDate: date, excludeTransfers: true, ...(userId ? { userId } : {}) };
   const q = useGetTreasuryReport(params, {
     query: { queryKey: getGetTreasuryReportQueryKey(params) },
   });
   const d = q.data;
+
+  const usersQ = useListUsers({ page: 1, pageSize: 100 });
 
   // Group by Reference Type
   const inGroups: Record<string, number> = {};
@@ -785,7 +794,7 @@ function DailyTransactionsReport() {
       { header: "الاتجاه", key: "direction", formatter: (v) => (v === "IN" ? "وارد" : "منصرف") },
       { header: "القيمة", key: "amount" },
       { header: "نوع الحركة", key: "referenceType", formatter: (v) => translateRef(v) },
-      { header: "ملاحظات", key: "description", formatter: (v) => v || "—" },
+      { header: "ملاحظات", key: "description", formatter: (v: any) => v || "—" },
     ]);
   };
 
@@ -802,9 +811,22 @@ function DailyTransactionsReport() {
             className="border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-slate-50"
           />
         </div>
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-1">الموظف (الكاشير)</label>
+          <select
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            className="border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-slate-50 min-w-[200px]"
+          >
+            <option value="">الكل</option>
+            {usersQ.data?.items?.map(u => (
+              <option key={u.id} value={u.id}>{u.fullName || u.username}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-emerald-50 rounded-2xl p-6 border border-emerald-100">
           <div className="flex items-center gap-2 text-emerald-800 mb-4">
             <TrendingUp size={20} className="text-emerald-600" />
@@ -836,6 +858,21 @@ function DailyTransactionsReport() {
               </div>
             ))}
             {Object.keys(outGroups).length === 0 && <p className="text-sm text-rose-600/70">لا يوجد حركات منصرفة</p>}
+          </div>
+        </div>
+
+        <div className="bg-indigo-50 rounded-2xl p-6 border border-indigo-100 flex flex-col">
+          <div className="flex items-center gap-2 text-indigo-800 mb-4">
+            <Scale size={20} className="text-indigo-600" />
+            <h3 className="text-lg font-bold">الصافي (الداخل - الخارج)</h3>
+          </div>
+          <p className={`text-3xl font-bold mb-6 ${(d?.totalIn ?? 0) - (d?.totalOut ?? 0) >= 0 ? "text-indigo-700" : "text-rose-700"}`}>
+            {money((d?.totalIn ?? 0) - (d?.totalOut ?? 0))}
+          </p>
+          <div className="mt-auto pt-4 border-t border-indigo-200/50">
+            <p className="text-sm text-indigo-600/80">
+              يمثل هذا الرقم الفارق بين إجمالي الإيرادات المحصلة وإجمالي المصروفات
+            </p>
           </div>
         </div>
       </div>
@@ -1044,6 +1081,69 @@ function DailySalesReport() {
             </tr>
           );
         })}
+      </Table>
+    </div>
+  );
+}
+
+function TreasuryTransfersReport() {
+  const [date, setDate] = useState(todayStr());
+  
+  const params = { fromDate: date, toDate: date, onlyTransfers: true };
+  const q = useGetTreasuryReport(params, {
+    query: { queryKey: getGetTreasuryReportQueryKey(params) },
+  });
+  const d = q.data;
+
+  const handleExport = () => {
+    if (!d?.rows) return;
+    exportToExcel(d.rows, `تحويل_بين_الخزائن_${date}`, "تحويل بين الخزائن", [
+      { header: "الوقت", key: "date", formatter: (v) => new Date(v).toLocaleTimeString("ar-EG") },
+      { header: "الخزينة", key: "accountName" },
+      { header: "الاتجاه", key: "direction", formatter: (v) => (v === "IN" ? "وارد" : "منصرف") },
+      { header: "القيمة", key: "amount" },
+      { header: "نوع الحركة", key: "referenceType", formatter: (v) => translateRef(v) },
+      { header: "ملاحظات", key: "description", formatter: (v: any) => v || "—" },
+    ]);
+  };
+
+  return (
+    <div>
+      <ReportHeader title="تحويل بين الخزائن" onExportExcel={handleExport} />
+      <div className="mb-6 flex items-end gap-4">
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-1">تاريخ التقرير</label>
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-slate-50"
+          />
+        </div>
+      </div>
+
+      <h3 className="text-lg font-bold text-slate-800 mb-4">سجل تفاصيل التحويلات</h3>
+      <Table
+        headers={["الوقت", "الخزينة", "الاتجاه", "القيمة", "نوع الحركة", "ملاحظات"]}
+        loading={q.isLoading}
+        empty={!d || d.rows.length === 0}
+      >
+        {d?.rows.map((r) => (
+          <tr key={r.id} className="text-slate-700">
+            <td className="p-4">{new Date(r.date).toLocaleTimeString("ar-EG")}</td>
+            <td className="p-4">{r.accountName}</td>
+            <td className="p-4">
+              <span className={`px-2 py-1 rounded-md text-xs font-bold ${r.direction === "IN" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                {r.direction === "IN" ? "وارد" : "منصرف"}
+              </span>
+            </td>
+            <td className="p-4 font-bold">{money(r.amount)}</td>
+            <td className="p-4">{translateRef(r.referenceType)}</td>
+            <td className="p-4 text-slate-500 text-sm max-w-[200px] truncate" title={(r as any).description || ""}>
+              {(r as any).description || "—"}
+            </td>
+          </tr>
+        ))}
       </Table>
     </div>
   );

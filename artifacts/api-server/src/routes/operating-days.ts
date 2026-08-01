@@ -314,23 +314,7 @@ router.post(
       return;
     }
 
-    // Enforce: only 1 operational day per user per operational shift (per Q5)
-    const [existingToday] = await db
-      .select({ id: operationalDaysTable.id })
-      .from(operationalDaysTable)
-      .where(
-        and(
-          eq(operationalDaysTable.storeId, storeId),
-          eq(operationalDaysTable.userId, userId),
-          gte(operationalDaysTable.openedAt, shiftStart),
-        ),
-      )
-      .limit(1);
 
-    if (existingToday) {
-      res.status(409).json({ error: "لقد أغلقت يومك التشغيلي بالفعل لهذه الوردية. لا يمكن فتح يوم جديد حتى الوردية التالية." });
-      return;
-    }
 
     // Ensure store financials and cashier accounts exist
     await ensureStoreFinancials(db, storeId);
