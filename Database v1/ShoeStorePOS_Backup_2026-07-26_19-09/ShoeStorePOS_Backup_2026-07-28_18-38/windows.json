@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "windows": [
+    {
+      "id": "0a344df4aaa22de0",
+      "partition": "",
+      "bounds": {
+        "x": 68,
+        "y": 0,
+        "width": 1400,
+        "height": 824
+      },
+      "isMaximized": false,
+      "isFullScreen": false,
+      "lastRoute": "/dashboard"
+    }
+  ],
+  "closedWindows": []
+}

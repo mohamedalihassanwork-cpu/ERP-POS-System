@@ -1,0 +1,5 @@
+{
+  "receiptPrinter": "POSPrinter POS80",
+  "barcodePrinter": "Xprinter XP-360B",
+  "invoicePrinter": ""
+}

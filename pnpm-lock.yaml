@@ -266,6 +266,19 @@ importers:
         specifier: ^8.0.3
         version: 8.0.5
 
+  artifacts/migration-wizard:
+    dependencies:
+      '@libsql/client':
+        specifier: ^0.17.4
+        version: 0.17.4
+    devDependencies:
+      electron:
+        specifier: 42.5.2
+        version: 42.5.2
+      electron-builder:
+        specifier: ^25.1.8
+        version: 25.1.8
+
   artifacts/mockup-sandbox:
     devDependencies:
       '@hookform/resolvers':

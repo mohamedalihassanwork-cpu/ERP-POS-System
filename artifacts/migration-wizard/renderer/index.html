@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';" />
+  <title>ERP Migration Wizard</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="root">
+
+    <!-- ── Sidebar ────────────────────────────────────────────────────── -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <div class="app-icon">🔄</div>
+        <div class="app-title">
+          <span class="app-name">Migration Wizard</span>
+          <span class="app-sub">ERP Database Tool</span>
+        </div>
+      </div>
+
+      <nav class="step-nav">
+        <div class="step-item" data-step="0">
+          <div class="step-dot"><span class="step-num">1</span></div>
+          <span class="step-label">Welcome</span>
+        </div>
+        <div class="step-item" data-step="1">
+          <div class="step-dot"><span class="step-num">2</span></div>
+          <span class="step-label">Select Database</span>
+        </div>
+        <div class="step-item" data-step="2">
+          <div class="step-dot"><span class="step-num">3</span></div>
+          <span class="step-label">Validation</span>
+        </div>
+        <div class="step-item" data-step="3">
+          <div class="step-dot"><span class="step-num">4</span></div>
+          <span class="step-label">Summary</span>
+        </div>
+        <div class="step-item" data-step="4">
+          <div class="step-dot"><span class="step-num">5</span></div>
+          <span class="step-label">Questions</span>
+        </div>
+        <div class="step-item" data-step="5">
+          <div class="step-dot"><span class="step-num">6</span></div>
+          <span class="step-label">Preview</span>
+        </div>
+        <div class="step-item" data-step="6">
+          <div class="step-dot"><span class="step-num">7</span></div>
+          <span class="step-label">Backup</span>
+        </div>
+        <div class="step-item" data-step="7">
+          <div class="step-dot"><span class="step-num">8</span></div>
+          <span class="step-label">Migration</span>
+        </div>
+        <div class="step-item" data-step="8">
+          <div class="step-dot"><span class="step-num">9</span></div>
+          <span class="step-label">Report</span>
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="version-badge">v1.0.0</div>
+      </div>
+    </aside>
+
+    <!-- ── Main Content ───────────────────────────────────────────────── -->
+    <main id="main-content">
+
+      <!-- Screen 0: Welcome -->
+      <div id="screen-0" class="screen active">
+        <div class="screen-content centered">
+          <div class="hero-icon pulse">🔄</div>
+          <h1>ERP Migration Wizard</h1>
+          <p class="lead">This tool safely migrates your ERP database from the old schema to the latest version.</p>
+          <div class="info-cards">
+            <div class="info-card">
+              <span class="info-icon">💾</span>
+              <div>
+                <strong>Automatic Backup</strong>
+                <p>Your database is backed up before any changes are made.</p>
+              </div>
+            </div>
+            <div class="info-card">
+              <span class="info-icon">🔒</span>
+              <div>
+                <strong>Safe &amp; Reversible</strong>
+                <p>Every step runs in a transaction. Rollback on failure.</p>
+              </div>
+            </div>
+            <div class="info-card">
+              <span class="info-icon">🧑‍💼</span>
+              <div>
+                <strong>Interactive Decisions</strong>
+                <p>You choose how to handle business-specific data.</p>
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn-primary" onclick="App.navigate(1)">Get Started →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 1: Select Database -->
+      <div id="screen-1" class="screen">
+        <div class="screen-content">
+          <h2>Select Database</h2>
+          <p class="subtitle">Choose the SQLite database file to migrate.</p>
+
+          <div class="card" id="db-path-card">
+            <div class="card-section">
+              <label class="field-label">Default Location</label>
+              <div class="path-row" id="default-path-row">
+                <span class="path-text" id="default-path-text">Detecting...</span>
+                <span class="path-badge" id="default-path-badge">—</span>
+              </div>
+              <button class="btn-secondary" id="btn-use-default" onclick="App.useDefaultDb()">
+                Use Default Location
+              </button>
+            </div>
+            <div class="divider-label">— or browse —</div>
+            <div class="card-section">
+              <button class="btn-outline" onclick="App.browseDb()">📂 Browse for File...</button>
+            </div>
+          </div>
+
+          <div class="card selected-file" id="selected-file-card" style="display:none">
+            <div class="card-row">
+              <span class="card-icon success">✓</span>
+              <div>
+                <strong>Selected File</strong>
+                <div class="path-text" id="selected-path-text"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn-ghost" onclick="App.navigate(0)">← Back</button>
+            <button class="btn-primary" id="btn-validate" disabled onclick="App.validateDb()">
+              Validate &amp; Continue →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 2: Validation -->
+      <div id="screen-2" class="screen">
+        <div class="screen-content">
+          <h2>Database Validation</h2>
+          <p class="subtitle">Inspecting your database...</p>
+
+          <div id="validation-loading" class="loading-state">
+            <div class="spinner"></div>
+            <p>Analyzing database structure...</p>
+          </div>
+
+          <div id="validation-result" style="display:none">
+            <div class="status-banner" id="validation-banner"></div>
+
+            <div class="info-grid" id="validation-grid"></div>
+
+            <div class="card" id="pending-migrations-card" style="display:none">
+              <h4>Pending Migrations</h4>
+              <div id="pending-migrations-list"></div>
+            </div>
+
+            <div class="card warn-card" id="validation-warning" style="display:none">
+              <span class="card-icon warn">⚠</span>
+              <div id="validation-warning-text"></div>
+            </div>
+          </div>
+
+          <div class="actions" id="validation-actions" style="display:none">
+            <button class="btn-ghost" onclick="App.navigate(1)">← Back</button>
+            <button class="btn-primary" id="btn-to-summary" onclick="App.navigate(3)">Continue →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 3: Migration Summary -->
+      <div id="screen-3" class="screen">
+        <div class="screen-content">
+          <h2>Migration Summary</h2>
+          <p class="subtitle">Here is what will change in your database.</p>
+
+          <div class="two-col">
+            <div class="card">
+              <h4>📐 Schema Changes</h4>
+              <ul class="change-list" id="schema-change-list"></ul>
+            </div>
+            <div class="card">
+              <h4>🔄 Data Changes</h4>
+              <ul class="change-list" id="data-change-list"></ul>
+            </div>
+          </div>
+
+          <div class="card warn-card" id="decisions-needed-card">
+            <span class="card-icon warn">⚠</span>
+            <div>
+              <strong id="decisions-count"></strong> — You will be asked these questions on the next screen.
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn-ghost" onclick="App.navigate(2)">← Back</button>
+            <button class="btn-primary" onclick="App.navigate(4)">Configure Migration →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 4: Questions -->
+      <div id="screen-4" class="screen">
+        <div class="screen-content">
+          <h2>Configuration</h2>
+          <p class="subtitle">Answer these questions to customize the migration for your business.</p>
+
+          <!-- Q1: Shift Hour -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-badge">Q1</span>
+              <span class="q-title">Business Shift Start Hour</span>
+            </div>
+            <p class="q-desc">What hour does your operational day begin? Transactions before this hour belong to the previous day's shift.</p>
+            <div class="q-input-row">
+              <input type="number" id="shift-hour-input" min="0" max="23" value="11"
+                class="number-input" onchange="App.choices.shiftStartHour = parseInt(this.value)" />
+              <span class="input-label">:00 (24-hour format) &nbsp;|&nbsp; Default: 11 = 11:00 AM</span>
+            </div>
+          </div>
+
+          <!-- Q2: Treasury Account Assignment -->
+          <div class="question-card">
+            <div class="q-header">
+              <span class="q-badge">Q2</span>
+              <span class="q-title">Primary Cashier for Existing Accounts</span>
+            </div>
+            <p class="q-desc">The existing CASH, CARD, INSTAPAY, and WALLET accounts need to be assigned to a cashier. Select the primary cashier:</p>
+            <div class="radio-group" id="cashier-radio-group">
+              <!-- Populated dynamically from user list -->
+            </div>
+            <div class="checkbox-row">
+              <input type="checkbox" id="create-others-checkbox" checked
+                onchange="App.choices.createAccountsForOthers = this.checked" />
+              <label for="create-others-checkbox">Also create empty accounts for all other active users (recommended)</label>
+            </div>
+          </div>
+
+          <!-- Q3: Treasury Sessions -->
+          <div class="question-card" id="sessions-question-card" style="display:none">
+            <div class="q-header">
+              <span class="q-badge">Q3</span>
+              <span class="q-title">Historical Treasury Sessions</span>
+            </div>
+            <p class="q-desc">The following closed sessions were found:</p>
+            <div id="sessions-detail-list" class="sessions-list"></div>
+            <div class="radio-group">
+              <label class="radio-option">
+                <input type="radio" name="sessions" value="convert" checked
+                  onchange="App.choices.convertSessions = true" />
+                <div>
+                  <strong>Convert to operational days</strong> (recommended)
+                  <p>Preserves history and enables reporting in the new ERP.</p>
+                </div>
+              </label>
+              <label class="radio-option">
+                <input type="radio" name="sessions" value="skip"
+                  onchange="App.choices.convertSessions = false" />
+                <div>
+                  <strong>Keep as legacy data</strong>
+                  <p>Sessions remain in <code>treasury_sessions</code> but won't appear in the new UI.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="btn-ghost" onclick="App.navigate(3)">← Back</button>
+            <button class="btn-primary" onclick="App.navigate(5)">Preview Migration →</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 5: Preview -->
+      <div id="screen-5" class="screen">
+        <div class="screen-content">
+          <h2>Migration Preview</h2>
+          <p class="subtitle">Review the exact steps that will be executed. This is your last chance to adjust settings.</p>
+
+          <div class="card step-preview-list" id="preview-steps"></div>
+
+          <div class="card" id="preview-choices">
+            <h4>Your Configuration</h4>
+            <table class="choices-table" id="choices-table"></table>
+          </div>
+
+          <div class="actions">
+            <button class="btn-ghost" onclick="App.navigate(4)">← Back to Questions</button>
+            <button class="btn-primary btn-danger" onclick="App.startBackup()">
+              🚀 Start Migration
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 6: Backup -->
+      <div id="screen-6" class="screen">
+        <div class="screen-content centered">
+          <div id="backup-running">
+            <div class="spinner large"></div>
+            <h3>Creating Backup...</h3>
+            <p>Copying your database to a safe location before any changes are made.</p>
+          </div>
+          <div id="backup-done" style="display:none">
+            <div class="success-icon">💾</div>
+            <h3>Backup Created Successfully</h3>
+            <div class="card backup-info-card" id="backup-info"></div>
+            <p class="backup-note">⚠️ The original database will not be modified until you click Continue.</p>
+            <div class="actions" style="justify-content:center">
+              <button class="btn-ghost" id="btn-open-backup-folder" onclick="App.openBackupFolder()">
+                📂 Open Backup Folder
+              </button>
+              <button class="btn-primary" onclick="App.startMigration()">🚀 Continue Migration</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 7: Progress -->
+      <div id="screen-7" class="screen">
+        <div class="screen-content">
+          <h2>Migration in Progress</h2>
+          <div class="progress-header">
+            <div class="progress-bar-wrap">
+              <div class="progress-bar" id="migration-progress-bar"></div>
+            </div>
+            <span class="progress-pct" id="progress-pct">0%</span>
+          </div>
+
+          <div class="migration-steps-list" id="migration-step-list"></div>
+
+          <div class="log-panel">
+            <div class="log-header">
+              <span>Migration Log</span>
+              <span class="log-count" id="log-line-count">0 lines</span>
+            </div>
+            <div class="log-output" id="log-output"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Screen 8: Report -->
+      <div id="screen-8" class="screen">
+        <div class="screen-content">
+          <div class="report-header" id="report-header"></div>
+
+          <div class="report-grid" id="report-grid"></div>
+
+          <div class="card" id="validation-results-card">
+            <h4>Validation Results</h4>
+            <div class="validation-list" id="validation-result-list"></div>
+          </div>
+
+          <div class="card" id="warnings-card" style="display:none">
+            <h4>⚠️ Warnings</h4>
+            <ul id="warnings-list"></ul>
+          </div>
+
+          <div class="actions">
+            <button class="btn-ghost" onclick="App.exportLog()">📄 Export Log</button>
+            <button class="btn-primary" onclick="window.close()">✓ Done</button>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

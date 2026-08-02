@@ -1,0 +1,43 @@
+---
+# electron-builder config for ERP Migration Wizard
+appId: com.shoestorepos.migrationwizard
+productName: "ERP Migration Wizard"
+copyright: "Shoe Store POS"
+
+# Include app files + the @libsql pre-built native binaries.
+# Everything under node_modules is excluded by default; we explicitly
+# re-include only what @libsql/client needs at runtime.
+files:
+  - main.js
+  - preload.js
+  - "migration/**/*"
+  - "renderer/**/*"
+  - "node_modules/@libsql/**/*"
+  - "node_modules/libsql/**/*"
+
+# No native compilation needed — @libsql ships pre-built binaries
+npmRebuild: false
+asar: true
+asarUnpack:
+  # Unpack native .node addons so they can be loaded at runtime
+  - "node_modules/@libsql/**/*.node"
+  - "node_modules/libsql/**/*.node"
+compression: "maximum"
+
+directories:
+  output: "dist"
+  buildResources: "assets"
+
+win:
+  target:
+    - target: portable
+      arch: x64
+  icon: assets/icon.ico
+
+nsis:
+  oneClick: true
+  runAfterFinish: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  language: "3073"
+  shortcutName: "ERP Migration Wizard"

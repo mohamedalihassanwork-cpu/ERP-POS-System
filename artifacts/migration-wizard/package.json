@@ -1,0 +1,22 @@
+{
+  "name": "erp-migration-wizard",
+  "version": "1.0.0",
+  "description": "ERP Database Migration Wizard — Standalone Windows Tool",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4"
+  },
+  "devDependencies": {
+    "electron": "42.5.2",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "extends": "./electron-builder.yml"
+  }
+}
