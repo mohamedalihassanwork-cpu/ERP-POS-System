@@ -137,12 +137,25 @@ export function FinancePage() {
           ))}
         </div>
 
-        {tab === "expenses" && <ExpensesTab canManage={canManage} />}
-        {tab === "categories" && <CategoriesTab canManage={canManage} />}
-        {tab === "employees" && <EmployeesTab canManage={canManage} />}
-        {tab === "salaries" && <SalariesTab canManage={canManage} />}
-        {tab === "advances" && <AdvancesTab canManage={canManage} />}
-        {tab === "equity" && <EquityTab canManage={canManage} />}
+        {/* All tab panels always mounted — CSS display toggle preserves form state across tab switches */}
+        <div style={{ display: tab === "expenses" ? "block" : "none" }}>
+          <ExpensesTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "categories" ? "block" : "none" }}>
+          <CategoriesTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "employees" ? "block" : "none" }}>
+          <EmployeesTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "salaries" ? "block" : "none" }}>
+          <SalariesTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "advances" ? "block" : "none" }}>
+          <AdvancesTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "equity" ? "block" : "none" }}>
+          <EquityTab canManage={canManage} />
+        </div>
       </div>
     </div>
   );

@@ -22,12 +22,24 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     module: "dashboard",
     labelAr: "لوحة التحكم",
     permissions: [
-      { key: "dashboard.view", labelAr: "عرض لوحة المعلومات الأساسية" },
-      { key: "dashboard.view_sales", labelAr: "عرض مبيعات اليوم" },
-      { key: "dashboard.view_profits", labelAr: "عرض أرباح اليوم" },
-      { key: "dashboard.view_treasury_total", labelAr: "عرض إجمالي الخزينة" },
-      { key: "dashboard.view_stock", labelAr: "عرض المخزون" },
-      { key: "dashboard.view_associations", labelAr: "عرض الجمعيات" },
+      // ── Access ──────────────────────────────────────────────────────────
+      { key: "dashboard.view",                 labelAr: "عرض لوحة التحكم (الوصول الأساسي)" },
+      // ── KPI Cards ────────────────────────────────────────────────────────
+      { key: "dashboard.view_sales",           labelAr: "عرض مبيعات اليوم" },
+      { key: "dashboard.view_profits",         labelAr: "عرض أرباح اليوم" },
+      { key: "dashboard.view_purchases",       labelAr: "عرض مشتريات اليوم" },
+      { key: "dashboard.view_expenses",        labelAr: "عرض مصروفات اليوم" },
+      { key: "dashboard.view_treasury",        labelAr: "عرض رصيد الخزنة الفرعية (الشخصية)" },
+      { key: "dashboard.view_treasury_total",  labelAr: "عرض إجمالي الخزينة (كل الحسابات)" },
+      { key: "dashboard.view_stock",           labelAr: "عرض المنتجات تحت حد الطلب" },
+      { key: "dashboard.view_customers",       labelAr: "عرض ديون العملاء" },
+      { key: "dashboard.view_suppliers",       labelAr: "عرض ديون الموردين" },
+      { key: "dashboard.view_associations",    labelAr: "عرض إحصائيات الجمعيات" },
+      // ── Charts ───────────────────────────────────────────────────────────
+      { key: "dashboard.view_sales_charts",    labelAr: "عرض رسوم المبيعات (يومي / شهري / أكثر مبيعاً / طرق الدفع / الفئات)" },
+      { key: "dashboard.view_cashflow_chart",  labelAr: "عرض رسم التدفق النقدي" },
+      // ── Activity ─────────────────────────────────────────────────────────
+      { key: "dashboard.view_activity",        labelAr: "عرض آخر النشاطات على لوحة التحكم" },
     ],
   },
   {
@@ -72,6 +84,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "suppliers.create", labelAr: "إضافة مورد" },
       { key: "suppliers.edit", labelAr: "تعديل مورد" },
       { key: "suppliers.delete", labelAr: "حذف مورد" },
+      { key: "suppliers.payment", labelAr: "تسديد دفعات الموردين" },
     ],
   },
   {
@@ -83,6 +96,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "purchases.edit", labelAr: "تعديل المشتريات" },
       { key: "purchases.delete", labelAr: "حذف المشتريات" },
       { key: "purchases.return", labelAr: "مرتجعات المشتريات" },
+      { key: "purchases.payment", labelAr: "تسجيل دفعات للموردين" },
     ],
   },
   {
@@ -100,7 +114,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     labelAr: "المخزون",
     permissions: [
       { key: "inventory.view", labelAr: "عرض المخزون" },
-      { key: "inventory.manage", labelAr: "إدارة المخزون والحركات" },
+      { key: "inventory.manage", labelAr: "إدارة المخازن والحركات" },
+      { key: "inventory.adjust", labelAr: "جرد وتسوية المخزون يدوياً" },
+      { key: "inventory.transfer", labelAr: "تحويل بضاعة بين المخازن" },
+      { key: "inventory.count", labelAr: "إنشاء وإدارة جلسات الجرد" },
     ],
   },
   {
@@ -110,7 +127,10 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
       { key: "finance.view", labelAr: "عرض المالية" },
       { key: "finance.manage", labelAr: "إدارة المصروفات والرواتب" },
       { key: "finance.delete", labelAr: "حذف سجلات المالية" },
-      { key: "expenses.create", labelAr: "إنشاء مصروف" },
+      { key: "expenses.create", labelAr: "إنشاء مصروف تشغيلي" },
+      { key: "salaries.create", labelAr: "إنشاء وصرف رواتب" },
+      { key: "advances.create", labelAr: "صرف سلف للموظفين" },
+      { key: "equity.create", labelAr: "تسجيل حركات رأس المال" },
     ],
   },
   {
@@ -130,9 +150,14 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     module: "reports",
     labelAr: "التقارير",
     permissions: [
-      { key: "reports.view", labelAr: "عرض جميع التقارير" },
-      { key: "reports.sales", labelAr: "تقارير المبيعات" },
-      { key: "reports.inventory", labelAr: "تقارير المخزون" },
+      { key: "reports.view", labelAr: "الوصول إلى صفحة التقارير" },
+      { key: "reports.sales", labelAr: "تقرير ملخص المبيعات" },
+      { key: "reports.purchases", labelAr: "تقرير ملخص المشتريات" },
+      { key: "reports.inventory", labelAr: "تقارير المخزون والمنتجات" },
+      { key: "reports.finance", labelAr: "تقارير الأرباح والمصروفات والرواتب" },
+      { key: "reports.treasury", labelAr: "تقرير معاملات الخزينة" },
+      { key: "reports.customers", labelAr: "كشف حساب العملاء" },
+      { key: "reports.suppliers", labelAr: "كشف حساب الموردين" },
     ],
   },
   {
@@ -150,7 +175,7 @@ export const PERMISSION_GROUPS: PermissionGroup[] = [
     labelAr: "الأدوار والصلاحيات",
     permissions: [
       { key: "roles.view", labelAr: "عرض الأدوار" },
-      { key: "roles.manage", labelAr: "إدارة الأدوار والصلاحيات" },
+      { key: "roles.manage", labelAr: "إنشاء وتعديل وحذف الأدوار" },
     ],
   },
   {

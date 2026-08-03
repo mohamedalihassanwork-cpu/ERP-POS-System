@@ -4411,7 +4411,7 @@ components:
           todayProfit,
           todayPurchases,
           todayExpenses,
-          treasuryBalance,
+          todayRegularExpenses,
           lowStockCount,
           customerDebts,
           supplierDebts,
@@ -4420,12 +4420,35 @@ components:
         todaySales: { type: number }
         todayProfit: { type: number }
         todayPurchases: { type: number }
+        # Total = regular expenses + association withdrawals (if user can see both)
         todayExpenses: { type: number }
-        treasuryBalance: { type: number }
-        cashDrawerBalance: { type: number }
+        # Expense breakdown: operational expenses only
+        todayRegularExpenses: { type: number }
+        # Expense breakdown: association withdrawals today (null if no associations permission)
+        todayAssociationWithdrawals:
+          type: number
+          nullable: true
+        treasuryBalance:
+          type: number
+          nullable: true
+        mainSafeBalance:
+          type: number
+          nullable: true
+        cashierSubTreasury:
+          type: number
+          nullable: true
+        cashDrawerBalance:
+          type: number
+          nullable: true
         lowStockCount: { type: integer }
         customerDebts: { type: number }
         supplierDebts: { type: number }
+        activeAssociationsCount: { type: integer }
+        totalAssociationsWithdrawn: { type: number }
+        totalAssociationsReturned: { type: number }
+        totalAssociationsBalance: { type: number }
+        shiftStartHour: { type: integer }
+        shiftStartTime: { type: string }
 
     NamedValue:
       type: object

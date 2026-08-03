@@ -152,7 +152,13 @@ export function PurchasesPage() {
           </button>
         </div>
 
-        {tab === "new" ? <NewPurchase onDone={() => setTab("history")} /> : <PurchaseHistory />}
+        {/* Both panels always mounted — CSS display toggle preserves form state across tab switches */}
+        <div style={{ display: tab === "new" ? "block" : "none" }}>
+          <NewPurchase onDone={() => setTab("history")} />
+        </div>
+        <div style={{ display: tab === "history" ? "block" : "none" }}>
+          <PurchaseHistory />
+        </div>
       </div>
     </div>
   );

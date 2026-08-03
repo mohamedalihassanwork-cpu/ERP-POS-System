@@ -166,10 +166,19 @@ export function AssociationsPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
-          {tab === "associations" && <AssociationsTab canCreate={canCreate} canEdit={canEdit} />}
-          {tab === "transactions" && <TransactionsTab canTransact={canTransact} />}
-          {tab === "report" && <ReportTab canReport={canReport} />}
-          {tab === "statement" && <StatementTab />}
+          {/* All tab panels always mounted — CSS display toggle preserves state across tab switches */}
+          <div style={{ display: tab === "associations" ? "block" : "none" }}>
+            <AssociationsTab canCreate={canCreate} canEdit={canEdit} />
+          </div>
+          <div style={{ display: tab === "transactions" ? "block" : "none" }}>
+            <TransactionsTab canTransact={canTransact} />
+          </div>
+          <div style={{ display: tab === "report" ? "block" : "none" }}>
+            <ReportTab canReport={canReport} />
+          </div>
+          <div style={{ display: tab === "statement" ? "block" : "none" }}>
+            <StatementTab />
+          </div>
         </div>
       </div>
     </div>

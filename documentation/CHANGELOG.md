@@ -44,3 +44,39 @@ The ERP system is **fully implemented and operational** in both web and desktop 
 ## Desktop Migration
 
 The desktop application was **fully implemented** using Electron. The original planning document (`Desktop-Migration-Plan.md`) is now obsolete — Electron was chosen and the implementation is complete. See [Desktop-Architecture.md](./Desktop-Architecture.md) for the current implementation details.
+
+---
+
+## Update — 2026-08-03
+
+### 1. Dashboard KPIs & Charts — Permission-Based Filtering
+
+- Sales KPIs (`todaySales`, `todayProfit`) and all chart datasets now respect the logged-in user's sales permissions:
+  - **`sales.view`** → store-wide data (managers, accountants)
+  - **`sales.view_own`** (no `sales.view`) → data scoped to that cashier's own invoices only
+- Both `/api/dashboard/kpis` and `/api/dashboard/charts` apply the same scoping logic.
+- Implemented via `AnalyticsService` optional `userId` parameter — no separate code paths.
+
+### 2. Expenses KPI — Association Withdrawals Breakdown
+
+- The **"مصروفات اليوم"** KPI card now shows two sub-totals:
+  - **مصروفات تشغيلية** — regular operational expenses
+  - **مصروفات الجمعيات** — today's association WITHDRAWAL transactions
+- مصروفات الجمعيات is only shown when user has `associations.view` or `associations.transactions`.
+- New API fields: `todayRegularExpenses` and `todayAssociationWithdrawals` (nullable).
+
+### 3. Global Tab State Preservation
+
+- All tab-based pages use **CSS `display` toggle** instead of conditional `&&` rendering.
+- Preserves form fields, filters, and pagination state when switching tabs.
+- Applied to: `purchases.tsx`, `associations.tsx`, `finance.tsx`, `settings.tsx`, `master-data.tsx`.
+
+### 4. Permissions Catalog — Expanded
+
+New permissions added to `PERMISSION_GROUPS` in `lib/shared/src/permissions.ts`:
+- `sales.delete`, `sales.custom_date`, `sales.view_own`
+- `customers.payment`, `suppliers.payment`, `purchases.payment`
+- `inventory.adjust`, `inventory.transfer`, `inventory.count`
+- `salaries.create`, `advances.create`, `equity.create`
+- `reports.purchases`, `reports.finance`, `reports.treasury`, `reports.customers`, `reports.suppliers`
+- `users.create`, `users.edit`, `users.delete`

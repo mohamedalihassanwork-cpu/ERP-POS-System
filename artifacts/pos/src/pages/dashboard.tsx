@@ -1,4 +1,4 @@
-﻿import { Link } from "wouter";
+import { Link } from "wouter";
 import {
   Users,
   ScrollText,
@@ -200,19 +200,27 @@ function renderPieLabel({
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 
+interface KpiBreakdownItem {
+  label: string;
+  value: string;
+  color?: string; // tailwind text color class
+}
+
 interface KpiCardProps {
   label: string;
   value: string;
   icon: React.ReactNode;
   iconBg: string;
   isLoading?: boolean;
+  breakdown?: KpiBreakdownItem[];
 }
 
-function KpiCard({ label, value, icon, iconBg, isLoading }: KpiCardProps) {
+function KpiCard({ label, value, icon, iconBg, isLoading, breakdown }: KpiCardProps) {
+  const hasBreakdown = breakdown && breakdown.length > 0;
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-center gap-3 hover:shadow-md hover:border-slate-200 transition-all duration-200">
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4 flex items-start gap-3 hover:shadow-md hover:border-slate-200 transition-all duration-200">
       <div
-        className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${iconBg}`}
+        className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${iconBg}`}
       >
         {icon}
       </div>
@@ -222,6 +230,19 @@ function KpiCard({ label, value, icon, iconBg, isLoading }: KpiCardProps) {
           <div className="h-5 w-20 bg-slate-100 rounded-lg animate-pulse" />
         ) : (
           <p className="text-base font-black text-slate-800 truncate leading-tight">{value}</p>
+        )}
+        {/* Breakdown rows */}
+        {hasBreakdown && !isLoading && (
+          <div className="mt-1.5 space-y-0.5 border-t border-slate-50 pt-1.5">
+            {breakdown.map((item, i) => (
+              <div key={i} className="flex items-center justify-between gap-2">
+                <span className="text-[10px] text-slate-400 truncate">{item.label}</span>
+                <span className={`text-[10px] font-bold shrink-0 ${item.color ?? "text-slate-600"}`}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>
@@ -264,7 +285,7 @@ function EmptyChartState() {
 export function DashboardPage() {
   const { user, hasPermission } = useAuth();
   const canViewDashboard = hasPermission("dashboard.view");
-  const canViewAudit = hasPermission("audit.view");
+  const canViewAudit = hasPermission("audit.view") && hasPermission("dashboard.view_activity");
 
   const kpisQuery = useGetDashboardKpis({
     query: {
@@ -288,12 +309,51 @@ export function DashboardPage() {
   const k = kpisQuery.data;
   const charts = chartsQuery.data;
 
+  // KPI card visibility: each widget is gated by its dedicated dashboard.view_X permission.
+  // Backend scoping (store-wide vs own) is handled separately via data permissions.
+  // This gives admins full control over exactly which widgets appear for each role.
+
+  // Build expense breakdown — shown only when both expense and association breakdown are available
+  const canSeeDashboardExpenses = hasPermission("dashboard.view_expenses");
+  const canSeeDashboardAssociations = hasPermission("dashboard.view_associations");
+
+  const expenseBreakdown: Array<{ label: string; value: string; color?: string }> = [];
+  if (canSeeDashboardExpenses) {
+    expenseBreakdown.push({
+      label: "مصروفات تشغيلية",
+      value: money(k?.todayRegularExpenses),
+      color: "text-rose-600",
+    });
+  }
+  if (
+    canSeeDashboardAssociations &&
+    k?.todayAssociationWithdrawals != null
+  ) {
+    expenseBreakdown.push({
+      label: "مصروفات الجمعيات",
+      value: money(k?.todayAssociationWithdrawals),
+      color: "text-orange-500",
+    });
+  }
+
+  // Helper: card-level filter — supports single permission OR any-of list
+  const canSeeCard = (card: {
+    requiresPermission?: string;
+    requiresAnyOf?: string[];
+  }): boolean => {
+    if (!card.requiresPermission && !card.requiresAnyOf) return true;
+    if (card.requiresPermission && hasPermission(card.requiresPermission)) return true;
+    if (card.requiresAnyOf && card.requiresAnyOf.some((p) => hasPermission(p))) return true;
+    return false;
+  };
+
   const kpiCards = [
     {
       label: "مبيعات اليوم",
       value: money(k?.todaySales),
       icon: <ShoppingCart size={19} className="text-emerald-600" />,
       iconBg: "bg-emerald-50 border border-emerald-200",
+      requiresPermission: "dashboard.view_sales",
     },
     {
       label: "ربح اليوم",
@@ -307,18 +367,22 @@ export function DashboardPage() {
       value: money(k?.todayPurchases),
       icon: <ShoppingBag size={19} className="text-blue-600" />,
       iconBg: "bg-blue-50 border border-blue-200",
+      requiresPermission: "dashboard.view_purchases",
     },
     {
       label: "مصروفات اليوم",
       value: money(k?.todayExpenses),
       icon: <TrendingDown size={19} className="text-rose-600" />,
       iconBg: "bg-rose-50 border border-rose-200",
+      requiresPermission: "dashboard.view_expenses",
+      breakdown: expenseBreakdown.length > 1 ? expenseBreakdown : undefined,
     },
     {
       label: "الخزنة الفرعية",
       value: money(k?.cashDrawerBalance),
       icon: <Wallet size={19} className="text-emerald-600" />,
       iconBg: "bg-emerald-50 border border-emerald-200",
+      requiresPermission: "dashboard.view_treasury",
     },
     {
       label: "إجمالي الخزينة",
@@ -332,48 +396,51 @@ export function DashboardPage() {
       value: String(k?.lowStockCount ?? 0),
       icon: <AlertTriangle size={19} className="text-orange-600" />,
       iconBg: "bg-orange-50 border border-orange-200",
+      requiresPermission: "dashboard.view_stock",
     },
     {
       label: "ديون العملاء",
       value: money(k?.customerDebts),
       icon: <HandCoins size={19} className="text-purple-600" />,
       iconBg: "bg-purple-50 border border-purple-200",
+      requiresPermission: "dashboard.view_customers",
     },
     {
       label: "ديون الموردين",
       value: money(k?.supplierDebts),
       icon: <CreditCard size={19} className="text-slate-600" />,
       iconBg: "bg-slate-100 border border-slate-200",
+      requiresPermission: "dashboard.view_suppliers",
     },
     {
       label: "إجمالي الجمعيات",
       value: String(k?.activeAssociationsCount ?? 0),
       icon: <UserCheck size={19} className="text-teal-600" />,
       iconBg: "bg-teal-50 border border-teal-200",
-      requiresPermission: "dashboard.view_associations",
+      requiresPermission: "associations.view",
     },
     {
       label: "سحوبات الجمعيات",
       value: money(k?.totalAssociationsWithdrawn),
       icon: <HandCoins size={19} className="text-rose-500" />,
       iconBg: "bg-rose-50 border border-rose-200",
-      requiresPermission: "dashboard.view_associations",
+      requiresAnyOf: ["associations.view", "associations.transactions"],
     },
     {
       label: "دفعات الجمعيات",
       value: money(k?.totalAssociationsReturned),
       icon: <HandCoins size={19} className="text-emerald-500" />,
       iconBg: "bg-emerald-50 border border-emerald-200",
-      requiresPermission: "dashboard.view_associations",
+      requiresAnyOf: ["associations.view", "associations.transactions"],
     },
     {
       label: "صافي مديونية الجمعيات",
       value: money(k?.totalAssociationsBalance),
       icon: <Users size={19} className="text-amber-600" />,
       iconBg: "bg-amber-50 border border-amber-200",
-      requiresPermission: "dashboard.view_associations",
+      requiresAnyOf: ["associations.view", "associations.transactions"],
     },
-  ].filter((c) => !c.requiresPermission || hasPermission(c.requiresPermission));
+  ].filter(canSeeCard);
 
   const paymentData =
     charts?.salesByPaymentMethod.map((d) => ({
@@ -428,226 +495,245 @@ export function DashboardPage() {
                 icon={card.icon}
                 iconBg={card.iconBg}
                 isLoading={kpisQuery.isLoading}
+                breakdown={card.breakdown}
               />
             ))}
           </div>
         )}
 
-        {/* Charts */}
-        {canViewDashboard && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Charts — gated by dedicated dashboard chart permissions */}
+        {canViewDashboard && (() => {
+          const canSeeSalesCharts = hasPermission("dashboard.view_sales_charts");
+          const canSeeCashFlow = hasPermission("dashboard.view_cashflow_chart");
+          const anyChartVisible = canSeeSalesCharts || canSeeCashFlow;
+          if (!anyChartVisible) return null;
+          return (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-            {/* Daily Sales – Bar */}
-            <ChartCard title="مبيعات آخر 30 يوم">
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart
-                  data={charts?.dailySales ?? []}
-                  margin={{ top: 4, right: 4, left: 4, bottom: 4 }}
-                  barCategoryGap="35%"
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickLine={false}
-                    axisLine={false}
-                    reversed
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickLine={false}
-                    axisLine={false}
-                    orientation="left"
-                    width={48}
-                    tickFormatter={shortNumber}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f8fafc" }} />
-                  <Bar dataKey="value" name="المبيعات" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Monthly Revenue – Line */}
-            <ChartCard title="الإيرادات الشهرية (12 شهر)">
-              <ResponsiveContainer width="100%" height={240}>
-                <LineChart
-                  data={charts?.monthlyRevenue ?? []}
-                  margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickLine={false}
-                    axisLine={false}
-                    reversed
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickLine={false}
-                    axisLine={false}
-                    orientation="left"
-                    width={52}
-                    tickFormatter={shortNumber}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#e2e8f0", strokeWidth: 1 }} />
-                  <Line
-                    type="monotone"
-                    dataKey="value"
-                    name="الإيرادات"
-                    stroke="#3b82f6"
-                    strokeWidth={2.5}
-                    dot={false}
-                    activeDot={{ r: 4, fill: "#3b82f6" }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Cash Flow – Grouped Bar */}
-            <ChartCard title="التدفق النقدي (آخر 30 يوم)">
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart
-                  data={charts?.cashFlow ?? []}
-                  margin={{ top: 4, right: 4, left: 4, bottom: 24 }}
-                  barCategoryGap="30%"
-                  barGap={2}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickLine={false}
-                    axisLine={false}
-                    reversed
-                    interval="preserveStartEnd"
-                  />
-                  <YAxis
-                    tick={{ fontSize: 9, fill: "#94a3b8" }}
-                    tickLine={false}
-                    axisLine={false}
-                    orientation="left"
-                    width={48}
-                    tickFormatter={shortNumber}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f8fafc" }} />
-                  <Legend
-                    wrapperStyle={{ fontSize: "11px", paddingTop: "8px", direction: "rtl" }}
-                    iconType="circle"
-                    iconSize={8}
-                  />
-                  <Bar dataKey="inflow" name="داخل" fill="#10b981" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="outflow" name="خارج" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-
-            {/* Best Selling – Horizontal Bar */}
-            <ChartCard title="الأكثر مبيعاً (آخر 30 يوم)">
-              {bestSellingData.length === 0 ? (
-                <EmptyChartState />
-              ) : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <BarChart
-                    data={bestSellingData}
-                    layout="vertical"
-                    margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
-                    barCategoryGap="25%"
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 9, fill: "#94a3b8" }}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={shortNumber}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="shortLabel"
-                      tick={{ fontSize: 10, fill: "#64748b" }}
-                      tickLine={false}
-                      axisLine={false}
-                      width={bsYAxisWidth}
-                      orientation="right"
-                    />
-                    <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f8fafc" }} />
-                    <Bar dataKey="value" name="الكمية" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </ChartCard>
-
-            {/* Sales by Payment Method – Pie */}
-            <ChartCard title="المبيعات حسب طريقة الدفع (هذا الشهر)">
-              {paymentData.length === 0 ? (
-                <EmptyChartState />
-              ) : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <Pie
-                      data={paymentData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="46%"
-                      outerRadius={82}
-                      labelLine={false}
-                      label={renderPieLabel}
+              {/* Daily Sales – Bar */}
+              {canSeeSalesCharts && (
+                <ChartCard title="مبيعات آخر 30 يوم">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart
+                      data={charts?.dailySales ?? []}
+                      margin={{ top: 4, right: 4, left: 4, bottom: 4 }}
+                      barCategoryGap="35%"
                     >
-                      {paymentData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                    <Legend
-                      wrapperStyle={{ fontSize: "11px", paddingTop: "6px", direction: "rtl" }}
-                      iconType="circle"
-                      iconSize={8}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: "#94a3b8" }}
+                        tickLine={false}
+                        axisLine={false}
+                        reversed
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: "#94a3b8" }}
+                        tickLine={false}
+                        axisLine={false}
+                        orientation="left"
+                        width={48}
+                        tickFormatter={shortNumber}
+                      />
+                      <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f8fafc" }} />
+                      <Bar dataKey="value" name="المبيعات" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCard>
               )}
-            </ChartCard>
 
-            {/* Category Performance – Donut */}
-            <ChartCard title="أداء الفئات (هذا الشهر)">
-              {categoryData.length === 0 ? (
-                <EmptyChartState />
-              ) : (
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-                    <Pie
-                      data={categoryData}
-                      dataKey="value"
-                      nameKey="label"
-                      cx="50%"
-                      cy="46%"
-                      innerRadius={50}
-                      outerRadius={82}
-                      labelLine={false}
-                      label={renderPieLabel}
+              {/* Monthly Revenue – Line */}
+              {canSeeSalesCharts && (
+                <ChartCard title="الإيرادات الشهرية (12 شهر)">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <LineChart
+                      data={charts?.monthlyRevenue ?? []}
+                      margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
                     >
-                      {categoryData.map((_, i) => (
-                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                    <Legend
-                      wrapperStyle={{ fontSize: "11px", paddingTop: "6px", direction: "rtl" }}
-                      formatter={(value: string) => truncateLabel(value, 14)}
-                      iconType="circle"
-                      iconSize={8}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: "#94a3b8" }}
+                        tickLine={false}
+                        axisLine={false}
+                        reversed
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: "#94a3b8" }}
+                        tickLine={false}
+                        axisLine={false}
+                        orientation="left"
+                        width={52}
+                        tickFormatter={shortNumber}
+                      />
+                      <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#e2e8f0", strokeWidth: 1 }} />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        name="الإيرادات"
+                        stroke="#3b82f6"
+                        strokeWidth={2.5}
+                        dot={false}
+                        activeDot={{ r: 4, fill: "#3b82f6" }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartCard>
               )}
-            </ChartCard>
 
-          </div>
-        )}
+              {/* Cash Flow – Grouped Bar */}
+              {canSeeCashFlow && (
+                <ChartCard title="التدفق النقدي (آخر 30 يوم)">
+                  <ResponsiveContainer width="100%" height={240}>
+                    <BarChart
+                      data={charts?.cashFlow ?? []}
+                      margin={{ top: 4, right: 4, left: 4, bottom: 24 }}
+                      barCategoryGap="30%"
+                      barGap={2}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 9, fill: "#94a3b8" }}
+                        tickLine={false}
+                        axisLine={false}
+                        reversed
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        tick={{ fontSize: 9, fill: "#94a3b8" }}
+                        tickLine={false}
+                        axisLine={false}
+                        orientation="left"
+                        width={48}
+                        tickFormatter={shortNumber}
+                      />
+                      <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f8fafc" }} />
+                      <Legend
+                        wrapperStyle={{ fontSize: "11px", paddingTop: "8px", direction: "rtl" }}
+                        iconType="circle"
+                        iconSize={8}
+                      />
+                      <Bar dataKey="inflow" name="داخل" fill="#10b981" radius={[3, 3, 0, 0]} />
+                      <Bar dataKey="outflow" name="خارج" fill="#ef4444" radius={[3, 3, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+              )}
+
+              {/* Best Selling – Horizontal Bar */}
+              {canSeeSalesCharts && (
+                <ChartCard title="الأكثر مبيعاً (آخر 30 يوم)">
+                  {bestSellingData.length === 0 ? (
+                    <EmptyChartState />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <BarChart
+                        data={bestSellingData}
+                        layout="vertical"
+                        margin={{ top: 4, right: 16, left: 4, bottom: 4 }}
+                        barCategoryGap="25%"
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                        <XAxis
+                          type="number"
+                          tick={{ fontSize: 9, fill: "#94a3b8" }}
+                          tickLine={false}
+                          axisLine={false}
+                          tickFormatter={shortNumber}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="shortLabel"
+                          tick={{ fontSize: 10, fill: "#64748b" }}
+                          tickLine={false}
+                          axisLine={false}
+                          width={bsYAxisWidth}
+                          orientation="right"
+                        />
+                        <Tooltip content={<ChartTooltip />} cursor={{ fill: "#f8fafc" }} />
+                        <Bar dataKey="value" name="الكمية" fill="#8b5cf6" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </ChartCard>
+              )}
+
+              {/* Sales by Payment Method – Pie */}
+              {canSeeSalesCharts && (
+                <ChartCard title="المبيعات حسب طريقة الدفع (هذا الشهر)">
+                  {paymentData.length === 0 ? (
+                    <EmptyChartState />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                        <Pie
+                          data={paymentData}
+                          dataKey="value"
+                          nameKey="name"
+                          cx="50%"
+                          cy="46%"
+                          outerRadius={82}
+                          labelLine={false}
+                          label={renderPieLabel}
+                        >
+                          {paymentData.map((_, i) => (
+                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend
+                          wrapperStyle={{ fontSize: "11px", paddingTop: "6px", direction: "rtl" }}
+                          iconType="circle"
+                          iconSize={8}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </ChartCard>
+              )}
+
+              {/* Category Performance – Donut */}
+              {canSeeSalesCharts && (
+                <ChartCard title="أداء الفئات (هذا الشهر)">
+                  {categoryData.length === 0 ? (
+                    <EmptyChartState />
+                  ) : (
+                    <ResponsiveContainer width="100%" height={240}>
+                      <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+                        <Pie
+                          data={categoryData}
+                          dataKey="value"
+                          nameKey="label"
+                          cx="50%"
+                          cy="46%"
+                          innerRadius={50}
+                          outerRadius={82}
+                          labelLine={false}
+                          label={renderPieLabel}
+                        >
+                          {categoryData.map((_, i) => (
+                            <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip content={<ChartTooltip />} />
+                        <Legend
+                          wrapperStyle={{ fontSize: "11px", paddingTop: "6px", direction: "rtl" }}
+                          formatter={(value: string) => truncateLabel(value, 14)}
+                          iconType="circle"
+                          iconSize={8}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
+                </ChartCard>
+              )}
+
+            </div>
+          );
+        })()}
 
         {/* Recent Activity */}
         {canViewAudit && (

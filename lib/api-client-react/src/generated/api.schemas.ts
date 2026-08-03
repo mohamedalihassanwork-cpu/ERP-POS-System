@@ -1332,9 +1332,20 @@ export interface DashboardKpis {
   todaySales: number;
   todayProfit: number;
   todayPurchases: number;
+  /** Total = regular expenses + association withdrawals (if user can see both) */
   todayExpenses: number;
-  treasuryBalance: number;
-  cashDrawerBalance: number;
+  /** Expense breakdown: operational expenses only */
+  todayRegularExpenses: number;
+  /** Expense breakdown: association withdrawals today (null if no associations permission) */
+  todayAssociationWithdrawals: number | null;
+  /** null for cashiers (no treasury.view_all) */
+  treasuryBalance: number | null;
+  /** null without treasury.main_safe permission */
+  mainSafeBalance: number | null;
+  /** Sum of the logged-in cashier's own 4 accounts */
+  cashierSubTreasury: number | null;
+  /** Legacy alias for cashierSubTreasury */
+  cashDrawerBalance: number | null;
   lowStockCount: number;
   customerDebts: number;
   supplierDebts: number;
@@ -1342,6 +1353,8 @@ export interface DashboardKpis {
   totalAssociationsWithdrawn: number;
   totalAssociationsReturned: number;
   totalAssociationsBalance: number;
+  shiftStartHour?: number;
+  shiftStartTime?: string;
 }
 
 export interface NamedValue {

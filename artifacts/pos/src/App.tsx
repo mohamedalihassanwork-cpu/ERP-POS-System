@@ -1,7 +1,7 @@
-import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
+import { Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { queryClient } from "@/lib/query-client";
 import { useGetSetupStatus } from "@workspace/api-client-react";
 import { AuthProvider, useAuth } from "@/lib/auth";
@@ -58,146 +58,131 @@ function FullScreenLoader() {
   );
 }
 
-function PermissionGate({
-  permission,
-  anyOf,
-  children,
-}: {
+// ---------------------------------------------------------------------------
+// KeepAliveRoute — renders a page once it has been visited and keeps it
+// mounted (via CSS display) even when not active, preserving all local state.
+//
+// requiredPermission / anyOfPermissions: if the user lacks these on the FIRST
+// visit the page is never rendered (and they get redirected). On subsequent
+// renders the guard is skipped to avoid a redirect loop.
+// ---------------------------------------------------------------------------
+interface KeepAliveRouteProps {
+  path: string;
+  component: React.ComponentType;
+  /** permission required (exact) */
   permission?: string;
+  /** OR-list of permissions required */
   anyOf?: string[];
-  children: React.ReactNode;
-}) {
-  const { hasPermission } = useAuth();
-  
-  let ok = false;
-  if (permission && hasPermission(permission)) ok = true;
-  if (anyOf && anyOf.some(p => hasPermission(p))) ok = true;
-
-  if (!ok) {
-    return <Redirect to="/dashboard" />;
-  }
-  return <>{children}</>;
 }
 
+function KeepAliveRoute({ path, component: Page, permission, anyOf }: KeepAliveRouteProps) {
+  const [location] = useLocation();
+  const { hasPermission } = useAuth();
+  const hasBeenVisited = useRef(false);
+
+  // Normalize: strip trailing slash, compare base segment
+  const isActive = location === path || location.startsWith(path + "/");
+
+  // Permission check on every render (not just first visit) —
+  // if the user's role changes mid-session this still redirects them.
+  const permitted =
+    (!permission && !anyOf) ||
+    (permission && hasPermission(permission)) ||
+    (anyOf && anyOf.some((p) => hasPermission(p)));
+
+  if (isActive && !permitted) {
+    return <Redirect to="/dashboard" />;
+  }
+
+  // Only mount the page component once the route has been visited at least once
+  // (and permission was granted). Before first visit display:none would render
+  // an empty shell — pointless.
+  if (isActive && !hasBeenVisited.current) {
+    hasBeenVisited.current = true;
+  }
+
+  if (!hasBeenVisited.current) return null;
+
+  return (
+    <div
+      style={{
+        display: isActive ? "flex" : "none",
+        flexDirection: "column",
+        position: "absolute",
+        inset: 0,
+        overflow: "hidden",
+      }}
+    >
+      <Page />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// AuthenticatedApp — renders ALL pages as keep-alive routes.
+// Pages stay mounted after first visit; navigation only toggles visibility.
+// ---------------------------------------------------------------------------
 function AuthenticatedApp() {
+  const [location] = useLocation();
+
+  // Determine if the current path matches any known route.
+  const knownPaths = [
+    "/dashboard", "/pos", "/sales", "/sales-returns", "/purchases",
+    "/purchase-returns", "/products", "/master-data", "/warehouses",
+    "/stock", "/movements", "/transfers", "/stock-counts", "/customers",
+    "/suppliers", "/treasury", "/finance", "/reports", "/associations",
+    "/users", "/roles", "/audit", "/settings",
+  ];
+  const isKnown = knownPaths.some(
+    (p) => location === p || location.startsWith(p + "/"),
+  );
+
   return (
     <AppShell>
       <RouteTracker />
-      <Switch>
-        <Route path="/dashboard" component={DashboardPage} />
-        <Route path="/pos">
-          <PermissionGate permission="sales.create">
-            <POSPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/sales">
-          <PermissionGate permission="sales.view">
-            <SalesHistoryPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/sales-returns">
-          <PermissionGate permission="sales.return">
-            <SalesReturnsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/purchases">
-          <PermissionGate permission="purchases.view">
-            <PurchasesPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/purchase-returns">
-          <PermissionGate permission="purchases.return">
-            <PurchaseReturnsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/products">
-          <PermissionGate permission="products.view">
-            <ProductsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/master-data">
-          <PermissionGate permission="products.view">
-            <MasterDataPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/warehouses">
-          <PermissionGate permission="inventory.view">
-            <WarehousesPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/stock">
-          <PermissionGate permission="inventory.view">
-            <StockPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/movements">
-          <PermissionGate permission="inventory.view">
-            <MovementsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/transfers">
-          <PermissionGate permission="inventory.view">
-            <TransfersPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/stock-counts">
-          <PermissionGate permission="inventory.view">
-            <StockCountsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/customers">
-          <PermissionGate permission="customers.view">
-            <CustomersPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/suppliers">
-          <PermissionGate permission="suppliers.view">
-            <SuppliersPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/treasury">
-          <PermissionGate anyOf={["treasury.view", "treasury.session", "treasury.view_all"]}>
-            <TreasuryPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/finance">
-          <PermissionGate anyOf={["finance.view", "expenses.create", "salaries.create", "advances.create", "equity.create"]}>
-            <FinancePage />
-          </PermissionGate>
-        </Route>
-        <Route path="/reports">
-          <PermissionGate permission="reports.view">
-            <ReportsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/associations">
-          <PermissionGate anyOf={["associations.view", "associations.transactions", "associations.create", "associations.edit"]}>
-            <AssociationsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/users">
-          <PermissionGate permission="users.view">
-            <UsersPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/roles">
-          <PermissionGate permission="roles.view">
-            <RolesPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/audit">
-          <PermissionGate permission="audit.view">
-            <AuditPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/settings">
-          <PermissionGate permission="settings.view">
-            <SettingsPage />
-          </PermissionGate>
-        </Route>
-        <Route path="/" component={() => <Redirect to="/dashboard" />} />
-        <Route component={NotFound} />
-      </Switch>
+
+      {/* Root redirect */}
+      {location === "/" && <Redirect to="/dashboard" />}
+
+      {/* Not found — only shown for paths we don't recognise */}
+      {!isKnown && location !== "/" && <NotFound />}
+
+      {/* Keep-alive page slots — each page mounts once and stays alive */}
+      <KeepAliveRoute path="/dashboard" component={DashboardPage} />
+      <KeepAliveRoute path="/pos" component={POSPage} permission="sales.create" />
+      <KeepAliveRoute path="/sales" component={SalesHistoryPage} permission="sales.view" />
+      <KeepAliveRoute path="/sales-returns" component={SalesReturnsPage} permission="sales.return" />
+      <KeepAliveRoute path="/purchases" component={PurchasesPage} permission="purchases.view" />
+      <KeepAliveRoute path="/purchase-returns" component={PurchaseReturnsPage} permission="purchases.return" />
+      <KeepAliveRoute path="/products" component={ProductsPage} permission="products.view" />
+      <KeepAliveRoute path="/master-data" component={MasterDataPage} permission="products.view" />
+      <KeepAliveRoute path="/warehouses" component={WarehousesPage} permission="inventory.view" />
+      <KeepAliveRoute path="/stock" component={StockPage} permission="inventory.view" />
+      <KeepAliveRoute path="/movements" component={MovementsPage} permission="inventory.view" />
+      <KeepAliveRoute path="/transfers" component={TransfersPage} permission="inventory.view" />
+      <KeepAliveRoute path="/stock-counts" component={StockCountsPage} permission="inventory.view" />
+      <KeepAliveRoute path="/customers" component={CustomersPage} permission="customers.view" />
+      <KeepAliveRoute path="/suppliers" component={SuppliersPage} permission="suppliers.view" />
+      <KeepAliveRoute
+        path="/treasury"
+        component={TreasuryPage}
+        anyOf={["treasury.view", "treasury.session", "treasury.view_all"]}
+      />
+      <KeepAliveRoute
+        path="/finance"
+        component={FinancePage}
+        anyOf={["finance.view", "expenses.create", "salaries.create", "advances.create", "equity.create"]}
+      />
+      <KeepAliveRoute path="/reports" component={ReportsPage} permission="reports.view" />
+      <KeepAliveRoute
+        path="/associations"
+        component={AssociationsPage}
+        anyOf={["associations.view", "associations.transactions", "associations.create", "associations.edit"]}
+      />
+      <KeepAliveRoute path="/users" component={UsersPage} permission="users.view" />
+      <KeepAliveRoute path="/roles" component={RolesPage} permission="roles.view" />
+      <KeepAliveRoute path="/audit" component={AuditPage} permission="audit.view" />
+      <KeepAliveRoute path="/settings" component={SettingsPage} permission="settings.view" />
     </AppShell>
   );
 }

@@ -86,10 +86,19 @@ export function SettingsPage() {
           ))}
         </div>
 
-        {tab === "store" && <StoreSettingsTab canManage={canManage} />}
-        {tab === "sequences" && <SequencesTab canManage={canManage} />}
-        {tab === "printers" && <PrintersTab />}
-        {tab === "backup" && <BackupTab />}
+        {/* All tab panels always mounted — CSS display toggle preserves form state across tab switches */}
+        <div style={{ display: tab === "store" ? "block" : "none" }}>
+          <StoreSettingsTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "sequences" ? "block" : "none" }}>
+          <SequencesTab canManage={canManage} />
+        </div>
+        <div style={{ display: tab === "printers" ? "block" : "none" }}>
+          <PrintersTab />
+        </div>
+        <div style={{ display: tab === "backup" ? "block" : "none" }}>
+          <BackupTab />
+        </div>
       </div>
     </div>
   );

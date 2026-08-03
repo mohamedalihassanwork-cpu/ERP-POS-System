@@ -42,12 +42,58 @@ hasAnyPermission(permissions: string[], required: string[]): boolean
 
 Organized by `PERMISSION_GROUPS` (from `lib/shared/src/permissions.ts`):
 
+### Dashboard (`لوحة التحكم`)
+
+Dashboard permissions follow a **two-layer model**:
+
+| Layer | Controls |
+|-------|----------|
+| `dashboard.view_X` | **Visibility** — whether the widget is rendered at all |
+| Data permissions (e.g. `sales.view`, `treasury.view_all`) | **Scoping** — what data the backend returns |
+
+Both layers must be satisfied for a widget to be meaningful. For example, a cashier with `dashboard.view_sales` + `sales.view_own` sees the Sales KPI with their own data; a manager with `dashboard.view_sales` + `sales.view` sees store-wide data.
+
+#### Access
+| Permission | Description |
+|-----------|-------------|
+| `dashboard.view` | Access the dashboard page (required for any dashboard content) |
+
+#### KPI Cards
+| Permission | Description | Related data permission |
+|-----------|-------------|------------------------|
+| `dashboard.view_sales` | Sales today KPI | `sales.view` / `sales.view_own` |
+| `dashboard.view_profits` | Profit today KPI | `sales.view` / `sales.view_own` |
+| `dashboard.view_purchases` | Purchases today KPI | `purchases.view` |
+| `dashboard.view_expenses` | Expenses today KPI (incl. association breakdown) | `finance.view` / `expenses.create` |
+| `dashboard.view_treasury` | Cashier's own sub-treasury balance | `treasury.view` / `treasury.session` |
+| `dashboard.view_treasury_total` | Total treasury across all accounts | `treasury.view_all` |
+| `dashboard.view_stock` | Low-stock product count | `inventory.view` |
+| `dashboard.view_customers` | Total customer outstanding debts | `customers.view` |
+| `dashboard.view_suppliers` | Total supplier outstanding debts | `suppliers.view` |
+| `dashboard.view_associations` | Association stats (count, withdrawals, returns, balance) | `associations.view` / `associations.transactions` |
+
+#### Charts
+| Permission | Description | Related data permission |
+|-----------|-------------|------------------------|
+| `dashboard.view_sales_charts` | All sales charts (daily, monthly, best-sellers, payment method, categories) | `sales.view` / `sales.view_own` |
+| `dashboard.view_cashflow_chart` | Cash flow chart (inflow vs outflow over 30 days) | `treasury.view` / `treasury.view_all` |
+
+#### Activity
+| Permission | Description |
+|-----------|-------------|
+| `dashboard.view_activity` | Recent activity log widget on the dashboard (also requires `audit.view`) |
+
+---
+
 ### Sales (`المبيعات`)
 | Permission | Description |
 |-----------|-------------|
 | `sales.create` | Create new sales invoices (POS access) |
-| `sales.view` | View sales history |
+| `sales.view` | View **all** sales history (store-wide) |
+| `sales.view_own` | View **own** sales history only — backend scopes dashboard KPIs/charts to this cashier |
 | `sales.return` | Process customer returns |
+| `sales.delete` | Cancel/delete a sales invoice |
+| `sales.custom_date` | Backdate a sales invoice to a custom date |
 
 ### Purchases (`المشتريات`)
 | Permission | Description |
@@ -147,9 +193,7 @@ Organized by `PERMISSION_GROUPS` (from `lib/shared/src/permissions.ts`):
 | Permission | Description |
 |-----------|-------------|
 | `roles.view` | View roles and their permissions |
-| `roles.create` | Create new roles |
-| `roles.edit` | Edit role names and permissions |
-| `roles.delete` | Delete non-system roles |
+| `roles.manage` | Create, edit, and delete non-system roles |
 
 ### Audit (`سجل التدقيق`)
 | Permission | Description |
@@ -163,6 +207,11 @@ Organized by `PERMISSION_GROUPS` (from `lib/shared/src/permissions.ts`):
 | `settings.manage` | Edit store settings and configuration |
 
 ---
+
+> **Dashboard Two-Layer Model**: Dashboard widgets are gated by `dashboard.view_X` (visibility). Backend data scoping is controlled separately by the underlying data permissions (`sales.view`, `sales.view_own`, `treasury.view_all`, etc.). This lets admins configure exactly what each role sees on the dashboard without coupling it to the data access model.
+
+> **Expense KPI Breakdown**: The "مصروفات اليوم" card shows sub-breakdown rows only when the user has both `dashboard.view_expenses` AND `dashboard.view_associations`. Without associations permission, only operational expenses are shown.
+
 
 ## Default Roles
 
@@ -179,27 +228,25 @@ Seeded during the setup wizard. Defined in `lib/shared/src/roles.ts`.
 ### Manager (`مدير`)
 - `is_system: true`
 - Permissions:
-  - `dashboard.*` (view, view_sales, view_profits, view_treasury_total, view_stock, view_associations)
+  - **Dashboard (all widgets):** `dashboard.view`, `dashboard.view_sales`, `dashboard.view_profits`, `dashboard.view_purchases`, `dashboard.view_expenses`, `dashboard.view_treasury`, `dashboard.view_treasury_total`, `dashboard.view_stock`, `dashboard.view_customers`, `dashboard.view_suppliers`, `dashboard.view_associations`, `dashboard.view_sales_charts`, `dashboard.view_cashflow_chart`, `dashboard.view_activity`
   - `sales.*` (create, view, return, delete)
+  - `customers.*` (view, create, edit, delete)
+  - `suppliers.*` (view, create, edit, delete)
   - `purchases.*` (create, view, edit, delete, return)
   - `products.*` (view, create, edit, delete)
   - `inventory.view`, `inventory.manage`
-  - `customers.*` (view, create, edit, delete)
-  - `suppliers.*` (view, create, edit, delete)
-  - `finance.*` (view, manage, delete), `expenses.create`
+  - `finance.*` (view, manage, delete), `expenses.create`, `salaries.create`, `advances.create`, `equity.create`
   - `treasury.view`, `treasury.view_all`, `treasury.session`, `treasury.transfer`, `treasury.adjustment`, `treasury.main_safe`, `treasury.close_others`
   - `associations.*`
-  - `reports.view`, `reports.sales`, `reports.inventory`
-  - `users.view`
-  - `roles.view`
-  - `settings.view`
+  - `reports.*` (view, sales, purchases, inventory, finance, treasury, customers, suppliers)
+  - `users.view`, `roles.view`, `settings.view`
 
 ---
 
 ### Cashier (`كاشير`)
 - `is_system: true`
 - Permissions:
-  - `dashboard.view`, `dashboard.view_sales`
+  - **Dashboard (own sales + expenses + treasury):** `dashboard.view`, `dashboard.view_sales`, `dashboard.view_expenses`, `dashboard.view_treasury`, `dashboard.view_sales_charts`
   - `sales.create`, `sales.view_own`, `sales.return`
   - `customers.view`, `customers.create`, `customers.payment`
   - `products.view`
@@ -208,17 +255,20 @@ Seeded during the setup wizard. Defined in `lib/shared/src/roles.ts`.
   - `expenses.create`
   - `reports.sales`
 
-> **Note**: Cashiers do **not** have `treasury.transfer`, `treasury.adjustment`, or `treasury.main_safe`. They can only open/close their own operational day.
+> **Cashier Sales Charts**: A cashier's sales charts (`dashboard.view_sales_charts`) show only their own data because the backend uses `sales.view_own` to scope all chart queries.
+
+> **No treasury transfer/adjustment/main_safe**: Cashiers can only open/close their own operational day.
 
 ---
 
 ### Inventory Staff (`موظف المخزون`)
 - `is_system: true`
 - Permissions:
-  - `inventory.view`, `inventory.manage`, `inventory.adjust`, `inventory.transfer`, `inventory.count`
-  - `products.view`, `products.create`, `products.edit`
-  - `purchases.view`, `purchases.create`
+  - **Dashboard (purchases + stock):** `dashboard.view`, `dashboard.view_purchases`, `dashboard.view_stock`
   - `suppliers.view`
+  - `purchases.view`, `purchases.create`, `purchases.edit`, `purchases.delete`, `purchases.return`
+  - `products.view`, `products.create`, `products.edit`, `products.delete`
+  - `inventory.view`, `inventory.manage`, `inventory.adjust`, `inventory.transfer`, `inventory.count`
   - `reports.view`, `reports.inventory`, `reports.purchases`
 
 ---
@@ -226,16 +276,15 @@ Seeded during the setup wizard. Defined in `lib/shared/src/roles.ts`.
 ### Accountant (`محاسب`)
 - `is_system: true`
 - Permissions:
-  - `dashboard.view`, `dashboard.view_sales`, `dashboard.view_profits`, `dashboard.view_treasury_total`, `dashboard.view_stock`
+  - **Dashboard (all financial widgets except associations):** `dashboard.view`, `dashboard.view_sales`, `dashboard.view_profits`, `dashboard.view_purchases`, `dashboard.view_expenses`, `dashboard.view_treasury`, `dashboard.view_treasury_total`, `dashboard.view_stock`, `dashboard.view_customers`, `dashboard.view_suppliers`, `dashboard.view_sales_charts`, `dashboard.view_cashflow_chart`
   - `sales.view`
   - `purchases.view`
-  - `products.view`
-  - `inventory.view`
-  - `customers.*` (view, create, edit, delete)
-  - `suppliers.*` (view, create, edit, delete)
-  - `finance.view`, `finance.manage`
+  - `products.view`, `inventory.view`
+  - `customers.*` (view, create, edit, delete, payment)
+  - `suppliers.*` (view, create, edit, delete, payment)
+  - `finance.view`, `finance.manage`, `expenses.create`, `salaries.create`, `advances.create`, `equity.create`
   - `treasury.view`, `treasury.view_all`, `treasury.transfer`, `treasury.adjustment`, `treasury.main_safe`
-  - `reports.view`, `reports.sales`, `reports.inventory`
+  - `reports.*` (view, sales, purchases, inventory, finance, treasury, customers, suppliers)
 
 ---
 

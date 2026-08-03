@@ -16,6 +16,7 @@ import {
   salesReturnsTable,
   purchaseReturnsTable,
   salaryRecordsTable,
+  associationTransactionsTable,
 } from "@workspace/db";
 import { computeShiftEnd } from "./shift";
 
@@ -34,10 +35,12 @@ export class AnalyticsService {
 
   // --- Dashboard KPIs ---
 
-  static async getSalesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
+  static async getSalesKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11, userId?: string) {
     const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
     if (fromDate) conditions.push(gte(invoicesTable.createdAt, fromDate));
     if (toDate) conditions.push(lte(invoicesTable.createdAt, toDate));
+    // Scope to a specific cashier when they only have sales.view_own
+    if (userId) conditions.push(eq(invoicesTable.createdBy, userId));
 
     const [salesAgg] = await db
       .select({
@@ -163,12 +166,24 @@ export class AnalyticsService {
 
   // --- Reports Shared ---
 
-  // BUGFIX: was incorrectly filtering on invoicesTable.createdAt instead of salesReturnsTable.createdAt
-  static async getSalesReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11) {
+  // Scope returns to those belonging to a specific cashier's invoices when userId is provided.
+  static async getSalesReturnsKPIs(storeId: string, fromDate?: Date, toDate?: Date, shiftHour = 11, userId?: string) {
     const conditions: SQL[] = [eq(salesReturnsTable.storeId, storeId)];
-    // FIX: use salesReturnsTable.createdAt (not invoicesTable.createdAt)
     if (fromDate) conditions.push(gte(salesReturnsTable.createdAt, fromDate));
     if (toDate) conditions.push(lte(salesReturnsTable.createdAt, toDate));
+
+    if (userId) {
+      // Join to invoicesTable to filter by the original invoice creator
+      const [retAgg] = await db
+        .select({
+          total: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
+          cost: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalCost}), 0) AS REAL)`,
+        })
+        .from(salesReturnsTable)
+        .innerJoin(invoicesTable, eq(invoicesTable.id, salesReturnsTable.invoiceId))
+        .where(and(...conditions, eq(invoicesTable.createdBy, userId)));
+      return retAgg || { total: 0, cost: 0 };
+    }
 
     const [retAgg] = await db
       .select({
@@ -209,30 +224,44 @@ export class AnalyticsService {
   // NOTE: Previously used strftime with hardcoded -39600 (11h) offset.
   // Now uses app-layer date ranges with BETWEEN bounds for correctness and configurability.
 
-  static async getDailySales(storeId: string, fromDate: Date, shiftHour = 11) {
-    // Use UTC day as label but filter by shift-aligned boundaries in app layer.
-    // The strftime offset approach was fragile and hardcoded.
-    // Simple approach: group by the calendar day (UTC) within the requested range.
+  static async getDailySales(storeId: string, fromDate: Date, shiftHour = 11, userId?: string) {
     const dayExpr = sql<string>`strftime('%Y-%m-%d', ${invoicesTable.createdAt} / 1000, 'unixepoch')`;
+    const salesConds: SQL[] = [eq(invoicesTable.storeId, storeId), gte(invoicesTable.createdAt, fromDate)];
+    if (userId) salesConds.push(eq(invoicesTable.createdBy, userId));
+
     const sales = await db
       .select({
         label: dayExpr,
         value: sql<number>`CAST(coalesce(sum(${invoicesTable.totalAmount}), 0) AS REAL)`,
       })
       .from(invoicesTable)
-      .where(and(eq(invoicesTable.storeId, storeId), gte(invoicesTable.createdAt, fromDate)))
+      .where(and(...salesConds))
       .groupBy(dayExpr)
       .orderBy(dayExpr);
 
     const retDayExpr = sql<string>`strftime('%Y-%m-%d', ${salesReturnsTable.createdAt} / 1000, 'unixepoch')`;
-    const returns = await db
-      .select({
-        label: retDayExpr,
-        value: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
-      })
-      .from(salesReturnsTable)
-      .where(and(eq(salesReturnsTable.storeId, storeId), gte(salesReturnsTable.createdAt, fromDate)))
-      .groupBy(retDayExpr);
+    // For returns, join to invoices to scope by original creator when userId is set
+    const retConds: SQL[] = [eq(salesReturnsTable.storeId, storeId), gte(salesReturnsTable.createdAt, fromDate)];
+    const returnsQuery = userId
+      ? db
+          .select({
+            label: retDayExpr,
+            value: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
+          })
+          .from(salesReturnsTable)
+          .innerJoin(invoicesTable, eq(invoicesTable.id, salesReturnsTable.invoiceId))
+          .where(and(...retConds, eq(invoicesTable.createdBy, userId)))
+          .groupBy(retDayExpr)
+      : db
+          .select({
+            label: retDayExpr,
+            value: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
+          })
+          .from(salesReturnsTable)
+          .where(and(...retConds))
+          .groupBy(retDayExpr);
+
+    const returns = await returnsQuery;
 
     const map = new Map(sales.map(s => [s.label, s.value]));
     for (const r of returns) {
@@ -245,27 +274,43 @@ export class AnalyticsService {
       .sort((a, b) => a.label.localeCompare(b.label));
   }
 
-  static async getMonthlyRevenue(storeId: string, fromDate: Date, shiftHour = 11) {
+  static async getMonthlyRevenue(storeId: string, fromDate: Date, shiftHour = 11, userId?: string) {
     const monthExpr = sql<string>`strftime('%Y-%m', ${invoicesTable.createdAt} / 1000, 'unixepoch')`;
+    const salesConds: SQL[] = [eq(invoicesTable.storeId, storeId), gte(invoicesTable.createdAt, fromDate)];
+    if (userId) salesConds.push(eq(invoicesTable.createdBy, userId));
+
     const sales = await db
       .select({
         label: monthExpr,
         value: sql<number>`CAST(coalesce(sum(${invoicesTable.totalAmount}), 0) AS REAL)`,
       })
       .from(invoicesTable)
-      .where(and(eq(invoicesTable.storeId, storeId), gte(invoicesTable.createdAt, fromDate)))
+      .where(and(...salesConds))
       .groupBy(monthExpr)
       .orderBy(monthExpr);
 
     const retMonthExpr = sql<string>`strftime('%Y-%m', ${salesReturnsTable.createdAt} / 1000, 'unixepoch')`;
-    const returns = await db
-      .select({
-        label: retMonthExpr,
-        value: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
-      })
-      .from(salesReturnsTable)
-      .where(and(eq(salesReturnsTable.storeId, storeId), gte(salesReturnsTable.createdAt, fromDate)))
-      .groupBy(retMonthExpr);
+    const retConds: SQL[] = [eq(salesReturnsTable.storeId, storeId), gte(salesReturnsTable.createdAt, fromDate)];
+    const returnsQuery = userId
+      ? db
+          .select({
+            label: retMonthExpr,
+            value: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
+          })
+          .from(salesReturnsTable)
+          .innerJoin(invoicesTable, eq(invoicesTable.id, salesReturnsTable.invoiceId))
+          .where(and(...retConds, eq(invoicesTable.createdBy, userId)))
+          .groupBy(retMonthExpr)
+      : db
+          .select({
+            label: retMonthExpr,
+            value: sql<number>`CAST(coalesce(sum(${salesReturnsTable.totalAmount}), 0) AS REAL)`,
+          })
+          .from(salesReturnsTable)
+          .where(and(...retConds))
+          .groupBy(retMonthExpr);
+
+    const returns = await returnsQuery;
 
     const map = new Map(sales.map(s => [s.label, s.value]));
     for (const r of returns) {
@@ -295,7 +340,10 @@ export class AnalyticsService {
       .orderBy(cfDayExpr);
   }
 
-  static async getBestSellingProducts(storeId: string) {
+  static async getBestSellingProducts(storeId: string, userId?: string) {
+    const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
+    if (userId) conditions.push(eq(invoicesTable.createdBy, userId));
+
     return await db
       .select({
         label: productsTable.name,
@@ -305,13 +353,16 @@ export class AnalyticsService {
       .innerJoin(invoicesTable, eq(invoicesTable.id, invoiceItemsTable.invoiceId))
       .innerJoin(productVariantsTable, eq(productVariantsTable.id, invoiceItemsTable.variantId))
       .innerJoin(productsTable, eq(productsTable.id, productVariantsTable.productId))
-      .where(eq(invoicesTable.storeId, storeId))
+      .where(and(...conditions))
       .groupBy(productsTable.id)
       .orderBy(sql`CAST(sum(${invoiceItemsTable.quantity}) AS REAL) DESC`)
       .limit(5);
   }
 
-  static async getSalesByPaymentMethod(storeId: string) {
+  static async getSalesByPaymentMethod(storeId: string, userId?: string) {
+    const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
+    if (userId) conditions.push(eq(invoicesTable.createdBy, userId));
+
     return await db
       .select({
         label: invoicePaymentsTable.method,
@@ -319,12 +370,15 @@ export class AnalyticsService {
       })
       .from(invoicePaymentsTable)
       .innerJoin(invoicesTable, eq(invoicesTable.id, invoicePaymentsTable.invoiceId))
-      .where(eq(invoicesTable.storeId, storeId))
+      .where(and(...conditions))
       .groupBy(invoicePaymentsTable.method)
       .orderBy(sql`CAST(sum(${invoicePaymentsTable.amount}) AS REAL) DESC`);
   }
 
-  static async getSalesByCategory(storeId: string) {
+  static async getSalesByCategory(storeId: string, userId?: string) {
+    const conditions: SQL[] = [eq(invoicesTable.storeId, storeId)];
+    if (userId) conditions.push(eq(invoicesTable.createdBy, userId));
+
     return await db
       .select({
         label: categoriesTable.name,
@@ -335,9 +389,30 @@ export class AnalyticsService {
       .innerJoin(productVariantsTable, eq(productVariantsTable.id, invoiceItemsTable.variantId))
       .innerJoin(productsTable, eq(productsTable.id, productVariantsTable.productId))
       .innerJoin(categoriesTable, eq(categoriesTable.id, productsTable.categoryId))
-      .where(eq(invoicesTable.storeId, storeId))
+      .where(and(...conditions))
       .groupBy(categoriesTable.id)
       .orderBy(sql`CAST(sum(${invoiceItemsTable.lineTotal}) AS REAL) DESC`)
       .limit(5);
+  }
+
+  /**
+   * Today's association WITHDRAWAL transactions (money the business paid into the pool).
+   * These are the "مصروفات الجمعيات" expenses component.
+   */
+  static async getTodayAssociationWithdrawals(storeId: string, fromDate: Date) {
+    const [row] = await db
+      .select({
+        total: sql<number>`CAST(coalesce(sum(CAST(${associationTransactionsTable.amount} AS REAL)), 0) AS REAL)`,
+      })
+      .from(associationTransactionsTable)
+      .where(
+        and(
+          eq(associationTransactionsTable.storeId, storeId),
+          eq(associationTransactionsTable.type, "WITHDRAWAL"),
+          eq(associationTransactionsTable.isReversed, false),
+          gte(associationTransactionsTable.createdAt, fromDate),
+        ),
+      );
+    return row?.total ?? 0;
   }
 }

@@ -17,6 +17,7 @@ import {
   type LoginInput,
 } from "@workspace/api-client-react";
 import { WILDCARD_PERMISSION } from "@workspace/shared";
+import { queryClient } from "@/lib/query-client";
 
 let currentAccessToken: string | null = null;
 
@@ -87,6 +88,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setUser(null);
     clearTimer();
+    // Wipe the entire query cache so stale data from this session
+    // is never served to a different user who logs in next.
+    queryClient.clear();
   }, [clearTimer]);
 
   const runRefresh = useCallback(async (): Promise<boolean> => {
@@ -139,9 +143,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     (permission: string) => {
       if (!user) return false;
       const perms = user.permissions;
-      return (
-        perms.includes(WILDCARD_PERMISSION) || perms.includes(permission)
-      );
+      // Exact wildcard: "*" grants everything
+      if (perms.includes(WILDCARD_PERMISSION)) return true;
+      // Exact match
+      if (perms.includes(permission)) return true;
+      // Module wildcard: "sales.*" grants "sales.view", "sales.create" etc.
+      const moduleKey = permission.split(".")[0];
+      if (perms.includes(`${moduleKey}.*`)) return true;
+      return false;
     },
     [user],
   );

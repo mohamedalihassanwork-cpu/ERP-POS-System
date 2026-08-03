@@ -87,10 +87,19 @@ export function MasterDataPage() {
           ))}
         </div>
 
-        {tab === "categories" && <CategoriesPanel canEdit={canEdit} />}
-        {tab === "brands" && <BrandsPanel canEdit={canEdit} />}
-        {tab === "colors" && <ColorsPanel canEdit={canEdit} />}
-        {tab === "sizes" && <SizesPanel canEdit={canEdit} />}
+        {/* All tab panels always mounted — CSS display toggle preserves state across tab switches */}
+        <div style={{ display: tab === "categories" ? "block" : "none" }}>
+          <CategoriesPanel canEdit={canEdit} />
+        </div>
+        <div style={{ display: tab === "brands" ? "block" : "none" }}>
+          <BrandsPanel canEdit={canEdit} />
+        </div>
+        <div style={{ display: tab === "colors" ? "block" : "none" }}>
+          <ColorsPanel canEdit={canEdit} />
+        </div>
+        <div style={{ display: tab === "sizes" ? "block" : "none" }}>
+          <SizesPanel canEdit={canEdit} />
+        </div>
       </div>
     </div>
   );
