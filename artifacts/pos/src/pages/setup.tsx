@@ -389,7 +389,7 @@ export function SetupPage() {
                 />
               </Field>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <Field label="كلمة المرور" required hint="8 أحرف على الأقل">
+                <Field label="كلمة المرور" required hint="4 أحرف على الأقل">
                   <input
                     type="password"
                     className={inputClass}

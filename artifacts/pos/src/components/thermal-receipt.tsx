@@ -359,7 +359,12 @@ export function ThermalReceipt({
       <div className="receipt-center" style={{ textAlign: "center", fontSize: forPrint ? undefined : "10px", marginTop: "4px" }}>
         {data.receiptFooter ?? "شكرا لتعاملكم معنا ❤"}
       </div>
+
+      <div className="receipt-center" style={{ textAlign: "center", fontSize: forPrint ? undefined : "9px", marginTop: "8px", fontWeight: "bold", direction: "ltr" }}>
+        Powered by CoreFlow 01127101275
+      </div>
     </div>
     </>
   );
 }
+
