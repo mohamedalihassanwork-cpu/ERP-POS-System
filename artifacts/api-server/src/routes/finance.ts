@@ -278,7 +278,7 @@ router.post(
     try {
       expenseId = await db.transaction(async (tx) => {
         const [category] = await tx
-          .select({ id: expenseCategoriesTable.id })
+          .select({ id: expenseCategoriesTable.id, name: expenseCategoriesTable.name })
           .from(expenseCategoriesTable)
           .where(
             and(eq(expenseCategoriesTable.id, categoryId), eq(expenseCategoriesTable.storeId, storeId)),
@@ -327,7 +327,7 @@ router.post(
         await postJournalEntry(tx, {
           storeId,
           userId,
-          description: description ?? "مصروف تشغيلي",
+          description: description ?? `مصروف تشغيلي - ${category.name}`,
           referenceType: "EXPENSE",
           referenceId: exp.id,
           lines: [

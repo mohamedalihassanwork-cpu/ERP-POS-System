@@ -448,8 +448,10 @@ function SalesReport() {
       { header: "حالة الدفع", key: "paymentStatus", formatter: (v) => translatePaymentStatus(v) },
       { header: "حالة الإرجاع", key: "returnStatus", formatter: (v) => translateReturnStatus(v) },
       { header: "الإجمالي", key: "total" },
+      { header: "المدفوع", key: "paidAmount" },
+      { header: "الأجل", key: "unpaidAmount" },
       { header: "المرتجع", key: "returnedAmount" },
-      { header: "الصافي", key: "total", formatter: (v, r) => Number(v || 0) - Number(r.returnedAmount || 0) },
+      { header: "الصافي", key: "paidAmount", formatter: (v, r) => Number(v || 0) - Number(r.returnedAmount || 0) },
     ]);
   };
 
@@ -460,25 +462,28 @@ function SalesReport() {
       <div className="flex flex-wrap gap-3 mb-5">
         <SummaryStat label="عدد الفواتير" value={String(d?.count ?? 0)} />
         <SummaryStat label="إجمالي المبيعات" value={money(d?.total)} />
+        <SummaryStat label="المدفوع" value={money((d as any)?.totalPaid)} color="text-emerald-600" />
+        <SummaryStat label="الأجل" value={money((d as any)?.totalUnpaid)} color="text-amber-600" />
         <SummaryStat label="إجمالي المرتجعات" value={money((d as any)?.totalReturned)} color="text-rose-600" />
-        <SummaryStat label="صافي المبيعات" value={money((d as any)?.netTotal)} color="text-emerald-700" />
+        <SummaryStat label="الصافي (نقداً)" value={money((d as any)?.netTotal)} color="text-emerald-700" />
       </div>
       <Table
-        headers={["رقم الفاتورة", "التاريخ", "العميل", "طريقة الدفع", "حالة الدفع", "حالة الإرجاع", "الإجمالي", "المرتجع", "الصافي"]}
+        headers={["رقم الفاتورة", "التاريخ", "العميل", "الدفع", "حالة الدفع", "الإجمالي", "المدفوع", "الأجل", "المرتجع", "الصافي"]}
         loading={q.isLoading}
         empty={!d || d.rows.length === 0}
       >
         {d?.rows.map((r: any) => (
           <tr key={r.id} className="text-slate-700">
             <td className="py-2 px-3 font-bold">{r.invoiceNumber}</td>
-            <td className="py-2 px-3">{formatDateTime(r.date)}</td>
+            <td className="py-2 px-3 whitespace-nowrap">{formatDateTime(r.date)}</td>
             <td className="py-2 px-3">{r.customerName ?? "—"}</td>
-            <td className="py-2 px-3">{translatePaymentMethod(r.paymentMethod)}</td>
+            <td className="py-2 px-3 text-xs">{translatePaymentMethod(r.paymentMethod)}</td>
             <td className="py-2 px-3"><PaymentStatusBadge status={r.paymentStatus} /></td>
-            <td className="py-2 px-3"><ReturnStatusBadge status={r.returnStatus} /></td>
             <td className="py-2 px-3 font-bold">{money(r.total)}</td>
+            <td className="py-2 px-3 text-emerald-600 font-bold">{Number(r.paidAmount) > 0 ? money(r.paidAmount) : "—"}</td>
+            <td className="py-2 px-3 text-amber-600 font-bold">{Number(r.unpaidAmount) > 0 ? money(r.unpaidAmount) : "—"}</td>
             <td className="py-2 px-3 text-rose-600 font-bold">{Number(r.returnedAmount) > 0 ? money(r.returnedAmount) : "—"}</td>
-            <td className="py-2 px-3 font-bold text-emerald-700">{money(Number(r.total) - Number(r.returnedAmount))}</td>
+            <td className="py-2 px-3 font-bold text-emerald-700">{money(Number(r.paidAmount) - Number(r.returnedAmount))}</td>
           </tr>
         ))}
       </Table>
@@ -1188,6 +1193,7 @@ function AccountStatementReport() {
   const [accountId, setAccountId] = useState("");
   const [from, setFrom] = useState(yearStartStr());
   const [to, setTo] = useState(todayStr());
+  const [expenseCategoryId, setExpenseCategoryId] = useState("");
 
   const accountsQ = useQuery({
     queryKey: ["/api/reports/accounting-accounts"],
@@ -1197,8 +1203,13 @@ function AccountStatementReport() {
       }>("/api/reports/accounting-accounts"),
   });
 
+  const expenseCategoriesQ = useQuery({
+    queryKey: ["/api/finance/expense-categories"],
+    queryFn: () => customFetch<{ id: string; name: string }[]>("/api/finance/expense-categories"),
+  });
+
   const statementQ = useQuery({
-    queryKey: ["/api/reports/account-statement", accountId, from, to],
+    queryKey: ["/api/reports/account-statement", accountId, from, to, expenseCategoryId],
     queryFn: () =>
       customFetch<{
         account: { id: string; code: string; name: string; type: string; normalBalance: string };
@@ -1206,9 +1217,10 @@ function AccountStatementReport() {
           id: string; entryDate: string; referenceType: string | null;
           referenceId: string | null; description: string | null;
           debit: string; credit: string; runningBalance: number;
+          expenseCategoryName: string | null;
         }[];
         totalDebit: number; totalCredit: number; currentBalance: number; count: number;
-      }>(`/api/reports/account-statement?accountId=${accountId}&fromDate=${from}&toDate=${to}`),
+      }>(`/api/reports/account-statement?accountId=${accountId}&fromDate=${from}&toDate=${to}&expenseCategoryId=${expenseCategoryId}`),
     enabled: !!accountId,
   });
 
@@ -1219,6 +1231,7 @@ function AccountStatementReport() {
     exportToExcel(d.rows, `كشف_حساب_${d.account.name}`, "كشف حساب", [
       { header: "التاريخ", key: "entryDate", formatter: (v) => formatDateTime(v) },
       { header: "المرجع", key: "referenceType", formatter: (v) => v ? translateRef(v) : "—" },
+      { header: "الفئة", key: "expenseCategoryName", formatter: (v) => v || "—" },
       { header: "الوصف", key: "description", formatter: (v) => v || "—" },
       { header: "مدين", key: "debit" },
       { header: "دائن", key: "credit" },
@@ -1240,6 +1253,19 @@ function AccountStatementReport() {
             <option value="">اختر حساباً...</option>
             {accountsQ.data?.rows.map((a) => (
               <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-500 mb-1">فئة المصروف (اختياري)</label>
+          <select
+            value={expenseCategoryId}
+            onChange={(e) => setExpenseCategoryId(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm min-w-[220px]"
+          >
+            <option value="">كل الفئات</option>
+            {expenseCategoriesQ.data?.map((cat) => (
+              <option key={cat.id} value={cat.id}>{cat.name}</option>
             ))}
           </select>
         </div>
@@ -1265,7 +1291,7 @@ function AccountStatementReport() {
             <SummaryStat label="عدد القيود" value={String(d.count)} />
           </div>
           <Table
-            headers={["التاريخ", "المرجع", "الوصف", "مدين", "دائن", "الرصيد"]}
+            headers={["التاريخ", "المرجع", "الفئة", "الوصف", "مدين", "دائن", "الرصيد"]}
             loading={statementQ.isLoading}
             empty={d.rows.length === 0}
           >
@@ -1273,6 +1299,7 @@ function AccountStatementReport() {
               <tr key={r.id} className="text-slate-700">
                 <td className="py-2 px-3 whitespace-nowrap">{formatDateTime(r.entryDate)}</td>
                 <td className="py-2 px-3 text-xs">{r.referenceType ? translateRef(r.referenceType) : "—"}</td>
+                <td className="py-2 px-3 font-bold text-slate-600">{r.expenseCategoryName ?? "—"}</td>
                 <td className="py-2 px-3">{r.description ?? "—"}</td>
                 <td className="py-2 px-3 text-rose-600 font-bold">{Number(r.debit) > 0 ? money(r.debit) : "—"}</td>
                 <td className="py-2 px-3 text-emerald-700 font-bold">{Number(r.credit) > 0 ? money(r.credit) : "—"}</td>

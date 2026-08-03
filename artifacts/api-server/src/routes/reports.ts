@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gte, lte, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, lte, sql, inArray, type SQL } from "drizzle-orm";
 import {
   db,
   invoicesTable,
@@ -102,6 +102,8 @@ router.get(
         >`group_concat(distinct ${invoicePaymentsTable.method})`,
         paymentStatus: invoicesTable.paymentStatus,
         returnStatus: invoicesTable.returnStatus,
+        paidAmount: sql<number>`CAST(coalesce(sum(CASE WHEN ${invoicePaymentsTable.method} != 'CREDIT' THEN cast(${invoicePaymentsTable.amount} as REAL) ELSE 0 END), 0) AS REAL)`,
+        unpaidAmount: sql<number>`CAST(coalesce(sum(CASE WHEN ${invoicePaymentsTable.method} = 'CREDIT' THEN cast(${invoicePaymentsTable.amount} as REAL) ELSE 0 END), 0) AS REAL)`,
         returnedAmount: sql<number>`CAST(coalesce((SELECT sum(cast(${salesReturnsTable.totalAmount} as REAL)) FROM ${salesReturnsTable} WHERE ${salesReturnsTable.invoiceId} = ${invoicesTable.id}), 0) AS REAL)`,
       })
       .from(invoicesTable)
@@ -119,10 +121,17 @@ router.get(
       )
       .orderBy(desc(invoicesTable.createdAt));
 
-    const total = rows.reduce((s, r) => s + toNum(r.total), 0);
-    const totalReturned = rows.reduce((s, r) => s + toNum(r.returnedAmount), 0);
-    const netTotal = total - totalReturned;
-    res.json({ rows, count: rows.length, total, totalReturned, netTotal });
+    const rowsWithUnpaid = rows.map(r => ({
+      ...r,
+      unpaidAmount: toNum(r.unpaidAmount)
+    }));
+
+    const total = rowsWithUnpaid.reduce((s, r) => s + toNum(r.total), 0);
+    const totalReturned = rowsWithUnpaid.reduce((s, r) => s + toNum(r.returnedAmount), 0);
+    const totalPaid = rowsWithUnpaid.reduce((s, r) => s + toNum(r.paidAmount), 0);
+    const totalUnpaid = rowsWithUnpaid.reduce((s, r) => s + r.unpaidAmount, 0);
+    const netTotal = totalPaid - totalReturned;
+    res.json({ rows: rowsWithUnpaid, count: rowsWithUnpaid.length, total, totalReturned, totalPaid, totalUnpaid, netTotal });
   },
 );
 
@@ -464,6 +473,7 @@ router.get(
     const accountId = String(req.query["accountId"] ?? "");
     const fromDateStr = String(req.query["fromDate"] ?? "");
     const toDateStr = String(req.query["toDate"] ?? "");
+    const expenseCategoryId = String(req.query["expenseCategoryId"] ?? "");
 
     if (!accountId) {
       res.status(400).json({ error: "معرّف الحساب مطلوب" });
@@ -509,6 +519,25 @@ router.get(
       if (!isNaN(to.getTime())) { txConditions.push(lte(accountingTransactionsTable.entryDate, to)); }
     }
 
+    if (expenseCategoryId) {
+      txConditions.push(
+        inArray(
+          accountingTransactionsTable.id,
+          db
+            .select({ id: accountingTransactionsTable.id })
+            .from(accountingTransactionsTable)
+            .innerJoin(expensesTable, eq(expensesTable.id, accountingTransactionsTable.referenceId))
+            .where(
+              and(
+                eq(accountingTransactionsTable.referenceType, "EXPENSE"),
+                eq(expensesTable.categoryId, expenseCategoryId),
+                eq(accountingTransactionsTable.storeId, storeId)
+              )
+            )
+        )
+      );
+    }
+
     const rows = await db
       .select({
         id: accountingTransactionLinesTable.id,
@@ -518,11 +547,23 @@ router.get(
         description: accountingTransactionsTable.description,
         debit: accountingTransactionLinesTable.debit,
         credit: accountingTransactionLinesTable.credit,
+        expenseCategoryName: expenseCategoriesTable.name,
       })
       .from(accountingTransactionLinesTable)
       .innerJoin(
         accountingTransactionsTable,
         eq(accountingTransactionsTable.id, accountingTransactionLinesTable.transactionId),
+      )
+      .leftJoin(
+        expensesTable,
+        and(
+          eq(accountingTransactionsTable.referenceType, "EXPENSE"),
+          eq(accountingTransactionsTable.referenceId, expensesTable.id)
+        )
+      )
+      .leftJoin(
+        expenseCategoriesTable,
+        eq(expensesTable.categoryId, expenseCategoriesTable.id)
       )
       .where(and(...conditions, ...txConditions))
       .orderBy(asc(accountingTransactionsTable.entryDate), asc(accountingTransactionLinesTable.id));
