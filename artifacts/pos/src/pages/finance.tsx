@@ -447,6 +447,7 @@ function ExpensesTab({ canManage }: { canManage: boolean }) {
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/expenses"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/profit-loss"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/treasury"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/dashboard/kpis"] });
       setModalOpen(false);
     } catch (err) {
       setError(apiErrorMessage(err, "تعذّر تسجيل المصروف."));
@@ -466,6 +467,7 @@ function ExpensesTab({ canManage }: { canManage: boolean }) {
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/expenses"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/profit-loss"] });
       void queryClient.invalidateQueries({ queryKey: ["/api/reports/treasury"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/dashboard/kpis"] });
       setPendingDeleteExpense(null);
     } catch (err) {
       setPendingDeleteExpense(null);

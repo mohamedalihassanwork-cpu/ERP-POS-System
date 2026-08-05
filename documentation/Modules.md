@@ -403,8 +403,6 @@ A rotating savings group where multiple participants contribute periodically, an
 - Transaction reversal (marks transaction as reversed, posts counter-transaction)
 - View transaction history per association
 
----
-
 ## 19. Reports (`/reports`)
 
 **UI page**: `pages/reports.tsx`  
@@ -414,25 +412,31 @@ Comprehensive reporting with export capabilities.
 
 ### Available Reports
 
-| Report | Permission | Content |
-|--------|-----------|---------|
-| Sales Summary | `reports.sales` | Invoices with totals, returns, payment methods |
-| Purchase Summary | `reports.purchases` | Purchase invoices with supplier and status |
-| Profit & Loss | `reports.finance` | Revenue, COGS, gross profit, expenses, net profit |
-| Inventory Stock | `reports.inventory` | Per-variant stock levels across warehouses |
-| Low Stock | `reports.inventory` | Variants at or below reorder point |
-| Top Products | `reports.inventory` | Best sellers by quantity or revenue |
-| Treasury Report | `reports.treasury` | Treasury transactions with running balance |
-| Expense Report | `reports.finance` | Expenses by category and date |
-| Customer Statement | `reports.customers` | Customer ledger for a specific customer |
-| Supplier Statement | `reports.suppliers` | Supplier ledger for a specific supplier |
-| Journal Ledger | `reports.finance` | Double-entry journal entries |
-| Movement Report | `reports.inventory` | Inventory movement log |
+| Report (Tab) | Permission | Content |
+|---|---|---|
+| ملخص المبيعات (Sales Summary) | `reports.sales` | Invoices with paid/unpaid amounts, payment method, return status. Summary: total, paid, آجل, returned |
+| الأكثر مبيعاً (Top Products) | `reports.sales` | Best-selling variants by quantity and revenue |
+| المبيعات اليومية (Daily Sales) | `reports.sales` | Revenue per day: invoice count, returns, net, cost, profit |
+| ملخص المشتريات (Purchases Summary) | `reports.view` | Purchase invoices with `amountPaid`, `remainingBalance`, payment method, status (PAID/PARTIAL/CONFIRMED). Includes purchase returns. Summary: total, totalPaid, totalUnpaid (آجل), totalReturned |
+| تقييم المخزون (Inventory Stock) | `reports.inventory` | Per-variant stock with cost/selling price and profit margin |
+| نواقص المخزون (Low Stock) | `reports.inventory` | Variants at or below reorder point, sorted by shortage severity |
+| الأرباح والخسائر (Profit & Loss) | `reports.view` | Revenue, sales returns, net revenue, COGS, gross profit, expenses, salaries, net profit |
+| حركة الخزينة (Treasury) | `reports.view` | Treasury transactions with running balance; filter by account, user, direction |
+| المصروفات (Expenses) | `reports.view` | Expenses by category and date |
+| كشف حساب (Account Statement) | `reports.view` | Double-entry journal ledger for any selected accounting account, with running balance |
+| نظرة مورد (Supplier Overview) | `reports.view` | Full transaction ledger for a selected supplier |
+| استعلام منتج (Product Inquiry) | `reports.inventory` | Product details, stock by warehouse, full inventory movement history |
+| كشف عميل (Customer Statement) | `reports.view` | Full AR ledger for a selected customer — invoices, payments, returns, running balance |
+| ملخص الرواتب (Salary Summary) | `reports.view` | Salary records per employee with base, bonuses, deductions, net |
+| معاملات اليوم (Daily Transactions) | `reports.view` | Today's treasury IN/OUT grouped by reference type; filter by cashier |
+| تحويل بين الخزائن (Treasury Transfers) | `reports.view` | Treasury transfers and day open/close carry entries |
+| تقادم الموردين (Supplier Aging) | `reports.view` | All suppliers with outstanding balances bucketed by age (0-30, 31-60, 61-90, 90+ days) |
+| تقادم العملاء (Customer Aging) | `reports.view` | **New** — All customers with outstanding credit balances bucketed by unpaid invoice age (0-30, 31-60, 61-90, 90+ days) |
 
 All reports support:
-- Date range filtering
+- Date range filtering (where applicable)
 - Excel export (via `lib/excel-export.ts` using the XLSX library)
-- Print-friendly view
+- Print-friendly view (via browser `window.print()`)
 
 ---
 

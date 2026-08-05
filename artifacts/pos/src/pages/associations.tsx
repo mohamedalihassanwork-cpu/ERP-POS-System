@@ -505,6 +505,9 @@ function TransactionsTab({ canTransact }: { canTransact: boolean }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/associations", assocId, "transactions"] });
       qc.invalidateQueries({ queryKey: ["/api/associations"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/kpis"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/treasury"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/expenses"] });
       setShowNew(false);
       setError("");
     },
@@ -520,6 +523,9 @@ function TransactionsTab({ canTransact }: { canTransact: boolean }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/associations", assocId, "transactions"] });
       qc.invalidateQueries({ queryKey: ["/api/associations"] });
+      qc.invalidateQueries({ queryKey: ["/api/dashboard/kpis"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/treasury"] });
+      qc.invalidateQueries({ queryKey: ["/api/reports/expenses"] });
       setReverseTarget(null);
       setError("");
     },

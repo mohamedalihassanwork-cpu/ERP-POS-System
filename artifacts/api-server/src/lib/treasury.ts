@@ -104,12 +104,21 @@ export async function resolveBackdatedTreasuryAccount(
 ): Promise<string> {
   if (!transactionDate) return requestedAccountId;
 
-  const date = new Date(transactionDate);
   const shiftHour = await getShiftStartHour(storeId);
   const shiftStart = computeShiftStart(shiftHour, new Date());
 
+  // Extract YYYY-MM-DD from transactionDate
+  const inputDateStr = typeof transactionDate === "string" 
+    ? transactionDate.slice(0, 10) 
+    : transactionDate instanceof Date 
+      ? transactionDate.toISOString().slice(0, 10) 
+      : "";
+
+  // Extract local YYYY-MM-DD from shiftStart
+  const shiftStartStr = `${shiftStart.getFullYear()}-${String(shiftStart.getMonth() + 1).padStart(2, '0')}-${String(shiftStart.getDate()).padStart(2, '0')}`;
+
   // If the date is in the current shift or future, don't change anything
-  if (date >= shiftStart) return requestedAccountId;
+  if (inputDateStr >= shiftStartStr) return requestedAccountId;
 
   // Check if requested account is a CASH account
   const [acct] = await tx

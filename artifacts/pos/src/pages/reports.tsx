@@ -109,6 +109,7 @@ type ReportTab =
   | "daily-sales"
   | "salary-summary"
   | "supplier-aging"
+  | "customer-aging"
   | "treasury-transfers";
 
 interface TabDef {
@@ -137,6 +138,7 @@ const TABS: TabDef[] = [
   { key: "daily-transactions", label: "معاملات اليوم", icon: <Activity size={18} />, permission: "reports.view" },
   { key: "treasury-transfers", label: "تحويل بين الخزائن", icon: <ArrowRightLeft size={18} />, permission: "reports.view" },
   { key: "supplier-aging", label: "تقادم الموردين", icon: <Clock size={18} />, permission: "reports.view" },
+  { key: "customer-aging", label: "تقادم العملاء", icon: <Users size={18} />, permission: "reports.view" },
 ];
 
 export function ReportsPage() {
@@ -193,6 +195,7 @@ export function ReportsPage() {
           {active === "customer-statement" && <CustomerStatementReport />}
           {active === "salary-summary" && <SalarySummaryReport />}
           {active === "supplier-aging" && <SupplierAgingReport />}
+          {active === "customer-aging" && <CustomerAgingReport />}
           {active === "daily-transactions" && <DailyTransactionsReport />}
           {active === "treasury-transfers" && <TreasuryTransfersReport />}
         </div>
@@ -544,13 +547,21 @@ function PurchasesReport() {
 
   const handleExport = () => {
     if (!d?.rows) return;
-    exportToExcel(d.rows, `ملخص_المشتريات_${from}_إلى_${to}`, "المشتريات", [
-      { header: "رقم الفاتورة", key: "invoiceNumber" },
-      { header: "التاريخ", key: "date", formatter: (v) => formatDate(v) },
-      { header: "المورد", key: "supplierName", formatter: (v) => v || "—" },
-      { header: "الحالة", key: "status", formatter: (v) => translatePurchaseStatus(v) },
-      { header: "الإجمالي", key: "total" },
-    ]);
+    exportToExcel(
+      (d.rows as any[]).filter((r) => !r.isReturn),
+      `ملخص_المشتريات_${from}_إلى_${to}`,
+      "المشتريات",
+      [
+        { header: "رقم الفاتورة", key: "invoiceNumber" },
+        { header: "التاريخ", key: "date", formatter: (v) => formatDate(v) },
+        { header: "المورد", key: "supplierName", formatter: (v) => v || "—" },
+        { header: "الحالة", key: "status", formatter: (v) => translatePurchaseStatus(v) },
+        { header: "طريقة الدفع", key: "paymentMethod", formatter: (v) => translatePaymentMethod(v) },
+        { header: "الإجمالي", key: "total" },
+        { header: "المدفوع", key: "amountPaid" },
+        { header: "المتبقي (آجل)", key: "remainingBalance" },
+      ],
+    );
   };
 
   return (
@@ -558,21 +569,51 @@ function PurchasesReport() {
       <ReportHeader title="ملخص المشتريات" onExportExcel={handleExport} />
       <DateRange from={from} to={to} setFrom={setFrom} setTo={setTo} />
       <div className="flex flex-wrap gap-3 mb-5">
-        <SummaryStat label="عدد الفواتير" value={String(d?.count ?? 0)} />
-        <SummaryStat label="إجمالي المشتريات" value={money(d?.total)} />
+        <SummaryStat label="عدد الفواتير" value={String((d as any)?.count ?? 0)} />
+        <SummaryStat label="إجمالي المشتريات" value={money((d as any)?.total)} />
+        <SummaryStat label="المدفوع" value={money((d as any)?.totalPaid)} color="text-emerald-600" />
+        <SummaryStat label="الآجل (المتبقي)" value={money((d as any)?.totalUnpaid)} color="text-amber-600" />
+        <SummaryStat label="إجمالي المرتجعات" value={money((d as any)?.totalReturned)} color="text-rose-600" />
       </div>
       <Table
-        headers={["رقم الفاتورة", "التاريخ", "المورد", "الحالة", "الإجمالي"]}
+        headers={["رقم الفاتورة", "التاريخ", "المورد", "الحالة", "الدفع", "الإجمالي", "المدفوع", "المتبقي"]}
         loading={q.isLoading}
-        empty={!d || d.rows.length === 0}
+        empty={!d || (d.rows as any[]).length === 0}
       >
-        {d?.rows.map((r) => (
-          <tr key={r.id} className="text-slate-700">
+        {(d?.rows as any[])?.map((r) => (
+          <tr key={r.id} className={`text-slate-700 ${r.isReturn ? "bg-rose-50" : ""}`}>
             <td className="py-2 px-3 font-bold">{r.invoiceNumber}</td>
             <td className="py-2 px-3">{formatDate(r.date)}</td>
             <td className="py-2 px-3">{r.supplierName ?? "—"}</td>
-            <td className="py-2 px-3">{translatePurchaseStatus(r.status)}</td>
+            <td className="py-2 px-3">
+              {r.isReturn ? (
+                <span className="text-rose-600 bg-rose-100 px-2 py-0.5 rounded-full text-xs font-bold">مرتجع</span>
+              ) : (
+                <span
+                  className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                    r.status === "PAID"
+                      ? "bg-emerald-100 text-emerald-700"
+                      : r.status === "PARTIAL"
+                        ? "bg-amber-100 text-amber-700"
+                        : r.status === "CONFIRMED"
+                          ? "bg-rose-100 text-rose-700"
+                          : "bg-slate-100 text-slate-600"
+                  }`}
+                >
+                  {translatePurchaseStatus(r.status)}
+                </span>
+              )}
+            </td>
+            <td className="py-2 px-3 text-xs">
+              {r.paymentMethod ? translatePaymentMethod(r.paymentMethod) : "—"}
+            </td>
             <td className="py-2 px-3 font-bold">{money(r.total)}</td>
+            <td className="py-2 px-3 text-emerald-600 font-bold">
+              {!r.isReturn && Number(r.amountPaid) > 0 ? money(r.amountPaid) : "—"}
+            </td>
+            <td className="py-2 px-3 text-amber-600 font-bold">
+              {!r.isReturn && Number(r.remainingBalance) > 0 ? money(r.remainingBalance) : "—"}
+            </td>
           </tr>
         ))}
       </Table>
@@ -1883,6 +1924,98 @@ function SupplierAgingReport() {
           </tr>
         )}
       </Table>
+    </div>
+  );
+}
+
+// ── New Report: Customer Aging ─────────────────────────────────────────────────
+
+function CustomerAgingReport() {
+  const q = useQuery({
+    queryKey: ["/api/reports/customer-aging"],
+    queryFn: () =>
+      customFetch<{
+        rows: {
+          customerId: string;
+          customerName: string;
+          phone: string;
+          creditLimit: number;
+          totalBalance: number;
+          current: number;
+          days30: number;
+          days60: number;
+          days90: number;
+          invoiceCount: number;
+        }[];
+        totals: { total: number; current: number; days30: number; days60: number; days90: number };
+        generatedAt: string;
+      }>("/api/reports/customer-aging"),
+  });
+
+  const d = q.data;
+
+  const handleExport = () => {
+    if (!d?.rows) return;
+    exportToExcel(d.rows, "تقادم_مستحقات_العملاء", "تقادم العملاء", [
+      { header: "العميل", key: "customerName" },
+      { header: "الهاتف", key: "phone", formatter: (v) => v || "—" },
+      { header: "الفواتير", key: "invoiceCount" },
+      { header: "الإجمالي", key: "totalBalance" },
+      { header: "0-30 يوم", key: "current" },
+      { header: "30-60 يوم", key: "days30" },
+      { header: "60-90 يوم", key: "days60" },
+      { header: "+90 يوم", key: "days90" },
+    ]);
+  };
+
+  return (
+    <div>
+      <ReportHeader title="تقادم مستحقات العملاء" onExportExcel={handleExport} />
+      <p className="text-xs text-slate-500 mb-4">
+        يعرض هذا التقرير جميع العملاء الذين لديهم أرصدة مستحقة (آجل)، مقسّمة حسب عمر الدين.
+        {d?.generatedAt && ` • تاريخ التقرير: ${formatDateTime(d.generatedAt)}`}
+      </p>
+      <div className="flex flex-wrap gap-3 mb-5">
+        <SummaryStat label="إجمالي مستحقات العملاء" value={money(d?.totals.total)} color="text-rose-600" />
+        <SummaryStat label="حالي (0-30 يوم)" value={money(d?.totals.current)} color="text-emerald-700" />
+        <SummaryStat label="30-60 يوم" value={money(d?.totals.days30)} color="text-amber-600" />
+        <SummaryStat label="60-90 يوم" value={money(d?.totals.days60)} color="text-orange-600" />
+        <SummaryStat label="+90 يوم" value={money(d?.totals.days90)} color="text-rose-600" />
+      </div>
+      <Table
+        headers={["العميل", "الهاتف", "الفواتير", "الإجمالي", "0-30 يوم", "30-60 يوم", "60-90 يوم", "+90 يوم"]}
+        loading={q.isLoading}
+        empty={!d || d.rows.length === 0}
+      >
+        {d?.rows.map((r) => (
+          <tr key={r.customerId} className="text-slate-700">
+            <td className="py-2 px-3 font-bold">{r.customerName}</td>
+            <td className="py-2 px-3 text-xs">{r.phone || "—"}</td>
+            <td className="py-2 px-3">{r.invoiceCount}</td>
+            <td className="py-2 px-3 font-black text-rose-600">{money(r.totalBalance)}</td>
+            <td className="py-2 px-3 text-emerald-700">{r.current > 0 ? money(r.current) : "—"}</td>
+            <td className="py-2 px-3 text-amber-600">{r.days30 > 0 ? money(r.days30) : "—"}</td>
+            <td className="py-2 px-3 text-orange-600">{r.days60 > 0 ? money(r.days60) : "—"}</td>
+            <td className="py-2 px-3 text-rose-600 font-bold">{r.days90 > 0 ? money(r.days90) : "—"}</td>
+          </tr>
+        ))}
+        {d && d.rows.length > 0 && (
+          <tr className="bg-slate-100 font-black text-slate-800 border-t-2 border-slate-300">
+            <td className="py-2 px-3" colSpan={3}>الإجمالي</td>
+            <td className="py-2 px-3 text-rose-700">{money(d.totals.total)}</td>
+            <td className="py-2 px-3 text-emerald-700">{money(d.totals.current)}</td>
+            <td className="py-2 px-3 text-amber-600">{money(d.totals.days30)}</td>
+            <td className="py-2 px-3 text-orange-600">{money(d.totals.days60)}</td>
+            <td className="py-2 px-3 text-rose-600">{money(d.totals.days90)}</td>
+          </tr>
+        )}
+      </Table>
+      {d && d.rows.length === 0 && !q.isLoading && (
+        <div className="text-center py-10">
+          <p className="text-slate-400 text-sm">لا يوجد عملاء بأرصدة مستحقة حالياً.</p>
+          <p className="text-slate-300 text-xs mt-1">جميع الفواتير مسددة بالكامل ✓</p>
+        </div>
+      )}
     </div>
   );
 }

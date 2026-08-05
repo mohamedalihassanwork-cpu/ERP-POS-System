@@ -7,6 +7,7 @@ import {
   invoicePaymentsTable,
   salesReturnsTable,
   purchaseInvoicesTable,
+  purchasePaymentsTable,
   purchaseReturnsTable,
   salesReturnItemsTable,
   expensesTable,
@@ -150,6 +151,7 @@ router.get(
     if (q.toDate) conditions.push(lte(purchaseInvoicesTable.createdAt, shiftEnd(q.toDate)));
     if (q.supplierId) conditions.push(eq(purchaseInvoicesTable.supplierId, q.supplierId));
 
+    // Fetch purchase invoices with payment breakdown (grouped so each invoice is one row)
     const invoiceRows = await db
       .select({
         id: purchaseInvoicesTable.id,
@@ -157,18 +159,35 @@ router.get(
         date: purchaseInvoicesTable.createdAt,
         supplierName: suppliersTable.name,
         total: purchaseInvoicesTable.totalAmount,
+        amountPaid: purchaseInvoicesTable.amountPaid,
+        remainingBalance: purchaseInvoicesTable.remainingBalance,
         status: purchaseInvoicesTable.status,
+        returnStatus: purchaseInvoicesTable.returnStatus,
+        // Aggregate payment methods across all payment records for this invoice
+        paymentMethod: sql<string | null>`group_concat(distinct ${purchasePaymentsTable.method})`,
       })
       .from(purchaseInvoicesTable)
       .leftJoin(suppliersTable, eq(suppliersTable.id, purchaseInvoicesTable.supplierId))
+      .leftJoin(purchasePaymentsTable, eq(purchasePaymentsTable.purchaseId, purchaseInvoicesTable.id))
       .where(and(...conditions))
+      .groupBy(
+        purchaseInvoicesTable.id,
+        purchaseInvoicesTable.invoiceNumber,
+        purchaseInvoicesTable.createdAt,
+        suppliersTable.name,
+        purchaseInvoicesTable.totalAmount,
+        purchaseInvoicesTable.amountPaid,
+        purchaseInvoicesTable.remainingBalance,
+        purchaseInvoicesTable.status,
+        purchaseInvoicesTable.returnStatus,
+      )
       .orderBy(desc(purchaseInvoicesTable.createdAt));
 
-    // Also get returns
+    // Also fetch purchase returns for the period
     const retConditions: SQL[] = [eq(purchaseReturnsTable.storeId, storeId)];
     if (q.fromDate) retConditions.push(gte(purchaseReturnsTable.createdAt, shiftStart(q.fromDate)));
     if (q.toDate) retConditions.push(lte(purchaseReturnsTable.createdAt, shiftEnd(q.toDate)));
-    
+
     let returnQuery = db
       .select({
         id: purchaseReturnsTable.id,
@@ -176,34 +195,47 @@ router.get(
         date: purchaseReturnsTable.createdAt,
         supplierName: suppliersTable.name,
         total: purchaseReturnsTable.totalAmount,
+        amountPaid: sql<string>`'0'`,
+        remainingBalance: sql<string>`'0'`,
         status: sql<string>`'مرتجع'`,
+        returnStatus: sql<string>`'FULL'`,
+        paymentMethod: sql<string | null>`null`,
       })
       .from(purchaseReturnsTable)
       .leftJoin(purchaseInvoicesTable, eq(purchaseReturnsTable.purchaseId, purchaseInvoicesTable.id))
       .leftJoin(suppliersTable, eq(suppliersTable.id, purchaseInvoicesTable.supplierId));
 
     if (q.supplierId) {
-       retConditions.push(eq(purchaseInvoicesTable.supplierId, q.supplierId));
+      retConditions.push(eq(purchaseInvoicesTable.supplierId, q.supplierId));
     }
-    
-    const returnRows = await returnQuery.where(and(...retConditions)).orderBy(desc(purchaseReturnsTable.createdAt));
 
-    // Make returns negative
-    const formattedReturnRows = returnRows.map(r => ({
-      ...r,
-      date: typeof r.date === "string" ? r.date : (r.date as Date)?.toISOString() || "",
-      total: -toNum(r.total)
-    }));
+    const returnRows = await returnQuery.where(and(...retConditions)).orderBy(desc(purchaseReturnsTable.createdAt));
 
     const formattedInvoiceRows = invoiceRows.map(r => ({
       ...r,
-      date: typeof r.date === "string" ? r.date : (r.date as Date)?.toISOString() || ""
+      date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+      isReturn: false,
     }));
 
-    const rows = [...formattedInvoiceRows, ...formattedReturnRows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Returns are shown as negative totals
+    const formattedReturnRows = returnRows.map(r => ({
+      ...r,
+      date: r.date instanceof Date ? r.date.toISOString() : String(r.date),
+      total: `-${toNum(r.total)}` as unknown as string,
+      isReturn: true,
+    }));
 
-    const total = rows.reduce((s, r) => s + toNum(r.total), 0);
-    res.json({ rows, count: rows.length, total });
+    const rows = [...formattedInvoiceRows, ...formattedReturnRows].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+
+    // Aggregate totals (only for invoices, not returns)
+    const total = formattedInvoiceRows.reduce((s, r) => s + toNum(r.total), 0);
+    const totalPaid = formattedInvoiceRows.reduce((s, r) => s + toNum(r.amountPaid), 0);
+    const totalUnpaid = formattedInvoiceRows.reduce((s, r) => s + toNum(r.remainingBalance), 0);
+    const totalReturned = returnRows.reduce((s, r) => s + toNum(r.total), 0);
+
+    res.json({ rows, count: rows.length, total, totalPaid, totalUnpaid, totalReturned });
   },
 );
 
@@ -1069,6 +1101,105 @@ router.get(
           supplierName: s.name,
           phone: s.phone,
           totalBalance: toNum(s.currentBalance),
+          current,
+          days30,
+          days60,
+          days90,
+          invoiceCount: invoices.length,
+        };
+      }),
+    );
+
+    const totals = result.reduce(
+      (acc, r) => ({
+        total: acc.total + r.totalBalance,
+        current: acc.current + r.current,
+        days30: acc.days30 + r.days30,
+        days60: acc.days60 + r.days60,
+        days90: acc.days90 + r.days90,
+      }),
+      { total: 0, current: 0, days30: 0, days60: 0, days90: 0 },
+    );
+
+    res.json({ rows: result, totals, generatedAt: now.toISOString() });
+  },
+);
+
+// ── Customer Aging ────────────────────────────────────────────────────────────
+// Groups outstanding customer receivables by age buckets (current, 30/60/90+ days).
+// Mirrors the supplier-aging endpoint — positive currentBalance means the customer owes the store.
+
+router.get(
+  "/reports/customer-aging",
+  requireAuth,
+  requirePermission("reports.view"),
+  async (req, res) => {
+    const storeId = req.auth!.storeId;
+    const now = new Date();
+    const nowMs = now.getTime();
+
+    // Fetch all customers who owe the store (currentBalance > 0)
+    const customers = await db
+      .select({
+        id: customersTable.id,
+        name: customersTable.name,
+        phone: customersTable.phone,
+        currentBalance: customersTable.currentBalance,
+        creditLimit: customersTable.creditLimit,
+      })
+      .from(customersTable)
+      .where(
+        and(
+          eq(customersTable.storeId, storeId),
+          sql`CAST(${customersTable.currentBalance} AS REAL) > 0`,
+        ),
+      )
+      .orderBy(desc(sql`CAST(${customersTable.currentBalance} AS REAL)`));
+
+    // For each customer, bucket their unpaid/partial sales invoices by age
+    const result = await Promise.all(
+      customers.map(async (c) => {
+        const invoices = await db
+          .select({
+            id: invoicesTable.id,
+            invoiceNumber: invoicesTable.invoiceNumber,
+            createdAt: invoicesTable.createdAt,
+            totalAmount: invoicesTable.totalAmount,
+            unpaidAmount: sql<string>`CAST(CAST(${invoicesTable.totalAmount} AS REAL) - CAST(coalesce((SELECT sum(CAST(${invoicePaymentsTable.amount} AS REAL)) FROM ${invoicePaymentsTable} WHERE ${invoicePaymentsTable.invoiceId} = ${invoicesTable.id} AND ${invoicePaymentsTable.method} != 'CREDIT'), 0) AS REAL) AS TEXT)`,
+            paymentStatus: invoicesTable.paymentStatus,
+          })
+          .from(invoicesTable)
+          .where(
+            and(
+              eq(invoicesTable.customerId, c.id),
+              eq(invoicesTable.storeId, storeId),
+              sql`${invoicesTable.paymentStatus} IN ('UNPAID', 'PARTIAL')`,
+            ),
+          );
+
+        let current = 0; // 0-30 days
+        let days30 = 0;  // 31-60
+        let days60 = 0;  // 61-90
+        let days90 = 0;  // 90+
+
+        for (const inv of invoices) {
+          const unpaid = toNum(inv.unpaidAmount);
+          if (unpaid <= 0) continue;
+          const invDate = inv.createdAt instanceof Date ? inv.createdAt.getTime() : new Date(inv.createdAt).getTime();
+          const ageDays = Math.floor((nowMs - invDate) / (24 * 60 * 60 * 1000));
+
+          if (ageDays <= 30) current += unpaid;
+          else if (ageDays <= 60) days30 += unpaid;
+          else if (ageDays <= 90) days60 += unpaid;
+          else days90 += unpaid;
+        }
+
+        return {
+          customerId: c.id,
+          customerName: c.name,
+          phone: c.phone,
+          creditLimit: toNum(c.creditLimit),
+          totalBalance: toNum(c.currentBalance),
           current,
           days30,
           days60,

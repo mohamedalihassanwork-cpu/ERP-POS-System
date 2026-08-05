@@ -561,8 +561,12 @@ All report endpoints require `requireAuth` + specific `reports.*` permission.
 - **Returns**: List of invoices with totals, returned amounts, payment methods
 
 ### `GET /api/reports/purchases-summary`
-- **Auth**: `reports.purchases`
+- **Auth**: `reports.view`
 - **Query**: `fromDate`, `toDate`, `supplierId`
+- **Returns**:
+  - `rows[]` — each purchase invoice row: `invoiceNumber`, `date`, `supplierName`, `total`, `amountPaid`, `remainingBalance`, `status` (CONFIRMED/PARTIAL/PAID), `returnStatus`, `paymentMethod` (comma-separated method codes), `isReturn` flag.
+  - Purchase return rows are included with `isReturn: true` and negative totals.
+  - `count`, `total` (sum of invoice totals), `totalPaid`, `totalUnpaid` (remaining/آجل), `totalReturned`.
 
 ### `GET /api/reports/inventory-stock`
 - **Auth**: `reports.inventory`
@@ -574,39 +578,62 @@ All report endpoints require `requireAuth` + specific `reports.*` permission.
 - **Returns**: Variants at or below their `reorder_point`
 
 ### `GET /api/reports/profit-loss`
-- **Auth**: `reports.finance`
+- **Auth**: `reports.view`
 - **Query**: `fromDate`, `toDate`
 - **Returns**: Revenue, COGS, gross profit, expenses breakdown, net profit
 
 ### `GET /api/reports/treasury`
-- **Auth**: `reports.treasury`
-- **Query**: `fromDate`, `toDate`, `treasuryAccountId`
-- **Returns**: Treasury transactions with running balance
+- **Auth**: `reports.view`
+- **Query**: `fromDate`, `toDate`, `accountId`, `userId`, `excludeTransfers`, `onlyTransfers`
+- **Returns**: Treasury transactions with running balance; `totalIn`, `totalOut`
 
-### `GET /api/reports/expense-report`
-- **Auth**: `reports.finance`
+### `GET /api/reports/expenses`
+- **Auth**: `reports.view`
 - **Query**: `fromDate`, `toDate`, `categoryId`
 
 ### `GET /api/reports/top-products`
-- **Auth**: `reports.inventory`
-- **Query**: `fromDate`, `toDate`, `limit`
+- **Auth**: `reports.sales`
+- **Query**: `fromDate`, `toDate`
 
 ### `GET /api/reports/customer-statement`
-- **Auth**: `reports.customers`
+- **Auth**: `reports.view`
 - **Query**: `customerId` (required), `fromDate`, `toDate`
+- **Returns**: Customer info + AR ledger rows (type, debit, credit, balanceAfter) + `totalDebit`, `totalCredit`
 
-### `GET /api/reports/supplier-statement`
-- **Auth**: `reports.suppliers`
-- **Query**: `supplierId` (required), `fromDate`, `toDate`
+### `GET /api/reports/account-statement`
+- **Auth**: `reports.view`
+- **Query**: `accountId` (required), `fromDate`, `toDate`, `expenseCategoryId`
+- **Returns**: Accounting journal lines for the account with running balance
 
-### `GET /api/reports/journal-ledger`
-- **Auth**: `reports.finance`
-- **Query**: `accountId?`, `fromDate`, `toDate`
-- **Returns**: Accounting transactions with double-entry lines
+### `GET /api/reports/accounting-accounts`
+- **Auth**: `reports.view`
+- **Returns**: All accounting accounts for the store (for dropdowns)
 
-### `GET /api/reports/movement-report`
+### `GET /api/reports/product-inquiry`
 - **Auth**: `reports.inventory`
-- **Query**: `variantId?`, `warehouseId?`, `type?`, `fromDate`, `toDate`
+- **Query**: `variantId` (required), `fromDate`, `toDate`
+- **Returns**: Variant info, stock by warehouse, inventory movement history
+
+### `GET /api/reports/daily-sales`
+- **Auth**: `reports.sales`
+- **Query**: `fromDate`, `toDate`
+- **Returns**: Revenue per day with invoice count, returns, net, cost, profit
+
+### `GET /api/reports/salary-summary`
+- **Auth**: `reports.view`
+- **Query**: `employeeId?`, `fromDate`, `toDate`
+- **Returns**: Salary records with totals (net, base, bonuses, deductions, paid/pending count)
+
+### `GET /api/reports/supplier-aging`
+- **Auth**: `reports.view`
+- **Returns**: All suppliers with `currentBalance > 0`, bucketed by invoice age (0-30, 31-60, 61-90, 90+ days)
+- **Shape**: `{ rows[], totals, generatedAt }`
+
+### `GET /api/reports/customer-aging` _(new)_
+- **Auth**: `reports.view`
+- **Returns**: All customers with `currentBalance > 0` (i.e. customers who owe the store money), bucketed by unpaid sales invoice age (0-30, 31-60, 61-90, 90+ days).
+- **Algorithm**: For each customer, fetches UNPAID/PARTIAL sales invoices and distributes the unpaid amount into age buckets based on invoice creation date.
+- **Shape**: `{ rows[{ customerId, customerName, phone, creditLimit, totalBalance, current, days30, days60, days90, invoiceCount }], totals{ total, current, days30, days60, days90 }, generatedAt }`
 
 ---
 
