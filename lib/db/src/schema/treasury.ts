@@ -35,6 +35,8 @@ export const treasuryRefTypeEnum = [
   "TRANSFER",
   "ADJUSTMENT",
   "DAY_CLOSE_RESET",
+  "DAY_CLOSE_VARIANCE", // Cash shortage/overage adjustment at day close — posts a GL journal entry
+  "DAY_OPEN_VARIANCE",  // Variance adjustment at day open if user alters initial carry over
   "DAY_OPEN_CARRY",
 ] as const;
 
@@ -176,6 +178,9 @@ export const operationalDaysTable = sqliteTable(
     // Totals for all 4 cashier accounts (computed at close)
     totalTransferredToMainSafe: text("total_transferred_to_main_safe").notNull().default("0"),
     notes: text("notes"),
+    // Cash variance audit fields (set at close when cashVariance ≠ 0)
+    cashVarianceReason: text("cash_variance_reason"), // nullable — one of CashVarianceReason enum values
+    cashVarianceNotes: text("cash_variance_notes"),   // nullable — free-text from cashier
     openedBy: text("opened_by")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),

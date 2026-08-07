@@ -52,6 +52,8 @@ interface OperationalDay {
   expectedClosingCashBalance: string | null;
   cashVariance: string | null;
   totalTransferredToMainSafe: string;
+  cashVarianceReason: string | null;
+  cashVarianceNotes: string | null;
   notes: string | null;
 }
 
@@ -70,10 +72,10 @@ const OP_DAYS_KEY = "/api/operating-days";
 const OP_DAYS_CURRENT_KEY = "/api/operating-days/current";
 
 function useCurrentOperationalDay() {
-  return useQuery<{ operationalDay: OperationalDay | null }>({
+  return useQuery<{ operationalDay: OperationalDay | null; expectedCashBalance: string | null }>({
     queryKey: [OP_DAYS_CURRENT_KEY],
     queryFn: () =>
-      customFetch<{ operationalDay: OperationalDay | null }>(
+      customFetch<{ operationalDay: OperationalDay | null; expectedCashBalance: string | null }>(
         "/api/operating-days/current",
       ),
     refetchInterval: 60_000,
@@ -229,8 +231,19 @@ const REF_TYPE_LABELS: Record<string, string> = {
   OPENING: "افتتاحي",
   TRANSFER: "تحويل رصيد",
   ADJUSTMENT: "تسوية حساب",
-  DAY_CLOSE_RESET: "إغلاق يوم تشغيلي",
+  DAY_CLOSE_RESET: "تحويل إغلاق يوم تشغيلي",
+  DAY_CLOSE_VARIANCE: "⚠️ فارق إغلاق الوردية",
+  DAY_OPEN_VARIANCE: "⚠️ فارق فتح الوردية",
   DAY_OPEN_CARRY: "ترحيل فتح اليوم",
+};
+
+const VARIANCE_REASON_LABELS: Record<string, string> = {
+  CASH_SHORTAGE:         "عجز نقدي",
+  CASH_OVERAGE:          "زيادة نقدية",
+  COUNTING_ERROR:        "خطأ في العد",
+  THEFT_OR_LOSS:         "سرقة أو ضياع",
+  PENDING_INVESTIGATION: "قيد التحقيق",
+  OTHER:                 "أخرى",
 };
 
 function formatDate(iso: string): string {
@@ -247,7 +260,7 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 export function TreasuryPage() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const canSession = hasPermission("treasury.session");
   const canViewAll = hasPermission("treasury.view_all");
   const canTransfer = hasPermission("treasury.transfer");
@@ -267,6 +280,7 @@ export function TreasuryPage() {
   const accounts = (accountsQuery.data ?? []) as TreasuryAccountWithOwner[];
   const transactions = txQuery.data?.items ?? [];
   const currentDay = currentDayQuery.data?.operationalDay ?? null;
+  const expectedCashBalance = currentDayQuery.data?.expectedCashBalance ?? null;
   const days = daysQuery.data?.items ?? [];
 
   // ── Filter state ──────────────────────────────────────────────────────────
@@ -278,6 +292,9 @@ export function TreasuryPage() {
   useEffect(() => {
     setSelectedOwnerName(null);
   }, [accounts.length]);
+
+  const cashierCashAccount = accounts.find((a) => a.type === "CASH" && (a as any).userId === user?.id);
+  const defaultOpeningBalance = cashierCashAccount ? String(cashierCashAccount.balance) : "0";
 
   // Split accounts: MAIN_SAFE goes first as the hero card
   const mainSafe = accounts.find((a) => a.type === "MAIN_SAFE") ?? null;
@@ -561,11 +578,15 @@ export function TreasuryPage() {
 
       {/* ── Modals ── */}
       {showOpenDay && (
-        <OpenDayModal onClose={() => setShowOpenDay(false)} />
+        <OpenDayModal 
+          defaultBalance={defaultOpeningBalance}
+          onClose={() => setShowOpenDay(false)} 
+        />
       )}
       {showCloseDay && currentDay && (
         <CloseDayModal
           day={currentDay}
+          expectedCashBalance={expectedCashBalance}
           onClose={() => setShowCloseDay(false)}
         />
       )}
@@ -1153,6 +1174,25 @@ function OperationalDayRow({
                 </span>
               </>
             )}
+            {/* Variance reason + notes — shown only when variance != 0 and recorded */}
+            {day.cashVariance != null &&
+              Number(day.cashVariance) !== 0 &&
+              day.cashVarianceReason && (
+                <>
+                  <span className="text-slate-500">سبب الفارق</span>
+                  <span className="text-slate-700 font-bold text-left text-xs">
+                    {VARIANCE_REASON_LABELS[day.cashVarianceReason] ?? day.cashVarianceReason}
+                  </span>
+                </>
+              )}
+            {day.cashVarianceNotes && (
+              <>
+                <span className="text-slate-500">ملاحظات الفارق</span>
+                <span className="text-slate-500 italic text-left text-xs">
+                  {day.cashVarianceNotes}
+                </span>
+              </>
+            )}
             <span className="text-slate-500">إجمالي محوّل للخزينة الرئيسية</span>
             <span className="text-slate-700 font-bold text-left">
               {money(day.totalTransferredToMainSafe)} ج.م
@@ -1181,9 +1221,15 @@ function OperationalDayRow({
 // Open Day Modal
 // ---------------------------------------------------------------------------
 
-function OpenDayModal({ onClose }: { onClose: () => void }) {
+function OpenDayModal({ 
+  defaultBalance,
+  onClose 
+}: { 
+  defaultBalance: string;
+  onClose: () => void; 
+}) {
   const queryClient = useQueryClient();
-  const [openingBalance, setOpeningBalance] = useState("");
+  const [openingBalance, setOpeningBalance] = useState(defaultBalance === "0" ? "" : toArabicNumerals(defaultBalance));
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -1201,27 +1247,22 @@ function OpenDayModal({ onClose }: { onClose: () => void }) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [OP_DAYS_CURRENT_KEY] });
       void queryClient.invalidateQueries({ queryKey: [OP_DAYS_KEY] });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/treasury/accounts"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/treasury/transactions"],
-      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/treasury/accounts"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/treasury/transactions"] });
       onClose();
     },
-    onError: (err) => setError(apiErrorMessage(err, "تعذّر فتح اليوم التشغيلي")),
+    onError: (err) => setError(apiErrorMessage(err, "تعذّر فتح يوم تشغيلي")),
   });
 
   return (
-    <Modal open onClose={onClose} title="فتح يوم تشغيلي جديد">
+    <Modal open onClose={onClose} title="فتح يوم تشغيلي">
       <div className="space-y-4">
         <div className="bg-amber-50 border border-amber-100 rounded-xl px-4 py-3 text-sm text-amber-800">
-          سيتم فتح يوم تشغيلي لك. إذا كان لديك رصيد نقدي من الوردية السابقة
-          (ترحيل)، أدخله هنا.
+          فتح يوم تشغيلي جديد. أدخل رصيد البداية النقدي (المرحّل من اليوم السابق إن وجد)، ثم اضغط فتح.
         </div>
         <div>
           <label className="block text-sm font-bold text-slate-700 mb-2">
-            رصيد الترحيل النقدي (اختياري)
+            رصيد الافتتاح النقدي (اختياري)
           </label>
           <input
             type="text"
@@ -1230,18 +1271,11 @@ function OpenDayModal({ onClose }: { onClose: () => void }) {
             className={inputClass}
             value={openingBalance}
             onChange={(e) => setOpeningBalance(toArabicNumerals(e.target.value))}
-            placeholder="٠.٠٠"
             data-testid="input-opening-balance"
           />
-          <p className="text-xs text-slate-400 mt-1">
-            أدخل الرصيد النقدي المرحّل من اليوم السابق. اتركه صفراً إذا لم
-            يكن هناك ترحيل.
-          </p>
         </div>
         <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">
-            ملاحظات
-          </label>
+          <label className="block text-sm font-bold text-slate-700 mb-2">ملاحظات</label>
           <input
             type="text"
             className={inputClass}
@@ -1259,13 +1293,9 @@ function OpenDayModal({ onClose }: { onClose: () => void }) {
           onClick={() => mut.mutate()}
           disabled={mut.isPending}
           className="w-full py-2.5 bg-amber-500 text-slate-900 rounded-xl font-bold hover:bg-amber-400 transition disabled:opacity-60 flex items-center justify-center gap-2"
-          data-testid="button-confirm-open-day"
+          data-testid="button-open-day-confirm"
         >
-          {mut.isPending ? (
-            <Loader2 size={18} className="animate-spin" />
-          ) : (
-            <PlayCircle size={18} />
-          )}
+          {mut.isPending ? <Loader2 size={18} className="animate-spin" /> : <PlayCircle size={18} />}
           فتح اليوم التشغيلي
         </button>
       </div>
@@ -1274,71 +1304,159 @@ function OpenDayModal({ onClose }: { onClose: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Close Day Modal
+// Close Day Modal — 4-step enterprise closing workflow
 // ---------------------------------------------------------------------------
+
+const VARIANCE_REASON_OPTIONS: { value: string; label: string }[] = [
+  { value: "CASH_SHORTAGE",         label: "عجز نقدي" },
+  { value: "CASH_OVERAGE",          label: "زيادة نقدية" },
+  { value: "COUNTING_ERROR",        label: "خطأ في العد" },
+  { value: "THEFT_OR_LOSS",         label: "سرقة أو ضياع" },
+  { value: "PENDING_INVESTIGATION", label: "قيد التحقيق" },
+  { value: "OTHER",                 label: "أخرى" },
+];
 
 function CloseDayModal({
   day,
+  expectedCashBalance,
   onClose,
 }: {
   day: OperationalDay;
+  expectedCashBalance: string | null;
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
+
   const [actualCash, setActualCash] = useState("");
   const [carryOver, setCarryOver] = useState("٠");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showVarianceConfirm, setShowVarianceConfirm] = useState(false);
+  const [showReasonDialog, setShowReasonDialog] = useState(false);
+  const [varianceReason, setVarianceReason] = useState("");
+  const [varianceNotes, setVarianceNotes] = useState("");
+
+  const actualNum   = parseArabicNumber(actualCash);
+  const carryNum    = parseArabicNumber(carryOver);
+  const expectedNum = expectedCashBalance ? Number(expectedCashBalance.replace(/,/g, "")) : null;
+  const variance    = expectedNum !== null && !Number.isNaN(actualNum) ? actualNum - expectedNum : null;
+  const hasVariance = variance !== null && Math.abs(variance) > 0.001;
+  const toMainSafe  = !Number.isNaN(actualNum) && !Number.isNaN(carryNum) ? Math.max(0, actualNum - carryNum) : 0;
 
   const mut = useMutation({
-    mutationFn: async () => {
-      const actual = parseArabicNumber(actualCash);
-      if (Number.isNaN(actual) || actual < 0) {
-        throw new Error("أدخل رصيداً فعلياً صحيحاً.");
-      }
-      const carry = parseArabicNumber(carryOver);
-      if (Number.isNaN(carry) || carry < 0 || carry > actual) {
-        throw new Error("مبلغ الترحيل يجب أن يكون بين صفر والرصيد الفعلي.");
-      }
+    mutationFn: async (params: { reason?: string; rNotes?: string }) => {
       await customFetch(`/api/operating-days/${day.id}/close`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          actualClosingCashBalance: actual,
-          carryOverCash: carry,
+          actualClosingCashBalance: actualNum,
+          carryOverCash: carryNum,
           notes: notes.trim() || null,
+          ...(params.reason ? { varianceReason: params.reason } : {}),
+          ...(params.rNotes?.trim() ? { varianceNotes: params.rNotes.trim() } : {}),
         }),
       });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: [OP_DAYS_CURRENT_KEY] });
       void queryClient.invalidateQueries({ queryKey: [OP_DAYS_KEY] });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/treasury/accounts"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/treasury/transactions"],
-      });
-      void queryClient.invalidateQueries({
-        queryKey: ["/api/dashboard/kpis"],
-      });
+      void queryClient.invalidateQueries({ queryKey: ["/api/treasury/accounts"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/treasury/transactions"] });
+      void queryClient.invalidateQueries({ queryKey: ["/api/dashboard/kpis"] });
       onClose();
     },
     onError: (err) => {
-      const msg =
-        err instanceof Error && !err.message.includes("fetch")
-          ? err.message
-          : apiErrorMessage(err, "تعذّر إغلاق اليوم التشغيلي");
+      const msg = err instanceof Error && !err.message.includes("fetch") ? err.message : apiErrorMessage(err, "تعذّر إغلاق اليوم التشغيلي");
       setError(msg);
+      setShowVarianceConfirm(false);
+      setShowReasonDialog(false);
     },
   });
 
-  const actualNum = parseArabicNumber(actualCash);
-  const carryNum = parseArabicNumber(carryOver);
-  const toMainSafe =
-    Number.isNaN(actualNum) || Number.isNaN(carryNum)
-      ? 0
-      : Math.max(0, actualNum - carryNum);
+  function validate(): boolean {
+    if (Number.isNaN(actualNum) || actualNum < 0) { setError("أدخل رصيداً فعلياً صحيحاً."); return false; }
+    if (Number.isNaN(carryNum) || carryNum < 0 || carryNum > actualNum) { setError("مبلغ الترحيل يجب أن يكون بين صفر والرصيد الفعلي."); return false; }
+    setError(null); return true;
+  }
+
+  function handleClosePress() {
+    if (!validate()) return;
+    if (hasVariance) { setShowVarianceConfirm(true); } else { mut.mutate({}); }
+  }
+
+  if (showReasonDialog) {
+    return (
+      <Modal open onClose={onClose} title="تسجيل سبب الفارق النقدي">
+        <div className="space-y-4">
+          <div className={`rounded-xl px-4 py-3 text-sm flex items-center gap-3 ${(variance ?? 0) < 0 ? "bg-red-50 border border-red-100 text-red-800" : "bg-green-50 border border-green-100 text-green-800"}`}>
+            <div>
+              <p className="font-bold">الفارق: {money(variance)} ج.م</p>
+              <p className="text-xs opacity-80">{(variance ?? 0) < 0 ? "عجز نقدي" : "زيادة نقدية"}</p>
+            </div>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-slate-700 mb-2">سبب الفارق <span className="text-red-500">*</span></p>
+            <div className="space-y-2">
+              {VARIANCE_REASON_OPTIONS.map((opt) => (
+                <label key={opt.value} className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-all ${varianceReason === opt.value ? "border-amber-400 bg-amber-50 text-amber-900" : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"}`}>
+                  <input type="radio" name="variance-reason" value={opt.value} checked={varianceReason === opt.value} onChange={() => setVarianceReason(opt.value)} className="accent-amber-500 w-4 h-4 shrink-0" data-testid={`radio-reason-${opt.value}`} />
+                  <span className="font-medium text-sm">{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-2">ملاحظات إضافية (اختياري)</label>
+            <textarea rows={3} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 outline-none transition resize-none text-sm" value={varianceNotes} onChange={(e) => setVarianceNotes(e.target.value)} placeholder="أدخل تفاصيل إضافية..." data-testid="textarea-variance-notes" />
+          </div>
+          {error && <div className="bg-red-50 text-red-700 text-sm font-medium rounded-xl px-4 py-3 border border-red-100">{error}</div>}
+          <div className="flex gap-3">
+            <button type="button" onClick={() => { setShowReasonDialog(false); setShowVarianceConfirm(true); }} className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition" data-testid="button-reason-back">رجوع</button>
+            <button onClick={() => mut.mutate({ reason: varianceReason, rNotes: varianceNotes })} disabled={!varianceReason || mut.isPending} className="flex-1 py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition disabled:opacity-60 flex items-center justify-center gap-2" data-testid="button-save-close-day">
+              {mut.isPending ? <Loader2 size={18} className="animate-spin" /> : <StopCircle size={18} />}
+              حفظ وإغلاق اليوم
+            </button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (showVarianceConfirm) {
+    const isShortage = (variance ?? 0) < 0;
+    const absVariance = Math.abs(variance ?? 0);
+    return (
+      <Modal open onClose={onClose} title="تنبيه: فارق نقدي">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-600">يوجد فارق بين الرصيد المتوقع والرصيد الفعلي. يُرجى المراجعة قبل المتابعة.</p>
+          <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm space-y-2">
+            <div className="flex justify-between">
+              <span className="text-slate-500">الرصيد المتوقع</span>
+              <span className="font-bold text-slate-700">{money(expectedNum)} ج.م</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">الرصيد الفعلي</span>
+              <span className="font-bold text-slate-700">{money(actualNum)} ج.م</span>
+            </div>
+            <div className="border-t border-slate-200 pt-2 flex justify-between">
+              <span className="font-bold text-slate-700">الفارق</span>
+              <span className={`font-black tabular-nums ${isShortage ? "text-red-600" : "text-green-600"}`}>{isShortage ? "-" : "+"}{money(absVariance)} ج.م</span>
+            </div>
+          </div>
+          <div className={`rounded-xl px-4 py-3 text-sm space-y-1.5 ${isShortage ? "bg-red-50 border border-red-100" : "bg-green-50 border border-green-100"}`}>
+            <p className={`font-bold text-xs uppercase mb-2 ${isShortage ? "text-red-700" : "text-green-700"}`}>سيتم تنفيذ الإجراءات التالية</p>
+            {toMainSafe > 0 && <p className="text-slate-700">تحويل {money(toMainSafe)} ج.م للخزينة الرئيسية</p>}
+            <p className="text-slate-700">تسجيل فارق {money(absVariance)} ج.م كـ {isShortage ? "عجز نقدي" : "زيادة نقدية"}</p>
+            <p className="text-slate-700">قيد محاسبي مزدوج: {isShortage ? "مدين فروق خزينة (6000)" : "مدين نقدية (1000)"}</p>
+          </div>
+          <div className="flex gap-3">
+            <button type="button" onClick={() => setShowVarianceConfirm(false)} className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-50 transition" data-testid="button-variance-cancel">إلغاء</button>
+            <button type="button" onClick={() => { setShowVarianceConfirm(false); setShowReasonDialog(true); }} className="flex-1 py-2.5 bg-amber-500 text-slate-900 rounded-xl font-bold hover:bg-amber-400 transition" data-testid="button-variance-continue">متابعة الإغلاق</button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal open onClose={onClose} title="إغلاق اليوم التشغيلي">
@@ -1346,100 +1464,71 @@ function CloseDayModal({
         <div className="bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm space-y-1.5">
           <div className="flex justify-between">
             <span className="text-slate-500">وردية مفتوحة منذ</span>
-            <span className="font-bold text-slate-700">
-              {formatDate(day.openedAt)}
-            </span>
+            <span className="font-bold text-slate-700">{formatDate(day.openedAt)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-slate-500">رصيد افتتاحي نقدي</span>
-            <span className="font-bold text-slate-700">
-              {money(day.openingCashBalance)} ج.م
-            </span>
+            <span className="font-bold text-slate-700">{money(day.openingCashBalance)} ج.م</span>
           </div>
         </div>
-
         <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">
-            الرصيد النقدي الفعلي عند الإغلاق{" "}
-            <span className="text-red-500">*</span>
-          </label>
-          <input
-            type="text"
-            inputMode="decimal"
-            dir="ltr"
-            className={inputClass}
-            value={actualCash}
-            onChange={(e) => {
-              const v = toArabicNumerals(e.target.value);
-              setActualCash(v);
-              setCarryOver("٠");
-            }}
-            data-testid="input-actual-cash"
-          />
+          <label className="block text-sm font-bold text-slate-700 mb-2">الرصيد النقدي الفعلي عند الإغلاق <span className="text-red-500">*</span></label>
+          <input type="text" inputMode="decimal" dir="ltr" className={inputClass} value={actualCash} onChange={(e) => { const v = toArabicNumerals(e.target.value); setActualCash(v); setCarryOver("٠"); setError(null); }} data-testid="input-actual-cash" />
         </div>
-
-        <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 space-y-3">
-          <p className="text-sm font-bold text-amber-900">الرصيد النقدي للترحيل</p>
-          <p className="text-xs text-amber-700">
-            المبلغ الذي ستحتفظ به في الدرج للوردية القادمة. الباقي سيُحوّل
-            تلقائياً للخزينة الرئيسية.
-          </p>
-          <input
-            type="text"
-            inputMode="decimal"
-            dir="ltr"
-            className="w-full px-3 py-2 rounded-lg border border-amber-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition"
-            value={carryOver}
-            onChange={(e) => setCarryOver(toArabicNumerals(e.target.value))}
-            data-testid="input-carry-over"
-          />
-          {!Number.isNaN(toMainSafe) && (
-            <div className="flex justify-between text-sm">
-              <span className="text-amber-800">سيُحوّل للخزينة الرئيسية:</span>
-              <span className="font-bold text-amber-900">
-                {money(toMainSafe)} ج.م
-              </span>
-            </div>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-bold text-slate-700 mb-2">
-            ملاحظات
-          </label>
-          <input
-            type="text"
-            className={inputClass}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            data-testid="input-close-notes"
-          />
-        </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-700 text-sm font-medium rounded-xl px-4 py-3 border border-red-100">
-            {error}
+        {actualCash && !Number.isNaN(actualNum) && (
+          <div className="bg-amber-50 rounded-xl p-4 border border-amber-100 space-y-3">
+            <p className="text-sm font-bold text-amber-900">الرصيد النقدي للترحيل</p>
+            <p className="text-xs text-amber-700">المبلغ الذي ستحتفظ به في الدرج. الباقي يُحوَّل للخزينة الرئيسية.</p>
+            <input type="text" inputMode="decimal" dir="ltr" className="w-full px-3 py-2 rounded-lg border border-amber-200 focus:border-amber-500 focus:ring-1 focus:ring-amber-500 outline-none transition" value={carryOver} onChange={(e) => setCarryOver(toArabicNumerals(e.target.value))} data-testid="input-carry-over" />
+            {!Number.isNaN(toMainSafe) && (
+              <div className="flex justify-between text-sm">
+                <span className="text-amber-800">سيُحوَّل للخزينة:</span>
+                <span className="font-bold text-amber-900">{money(toMainSafe)} ج.م</span>
+              </div>
+            )}
           </div>
         )}
-
-        <button
-          onClick={() => mut.mutate()}
-          disabled={mut.isPending || !actualCash}
-          className="w-full py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition disabled:opacity-60 flex items-center justify-center gap-2"
-          data-testid="button-confirm-close-day"
-        >
-          {mut.isPending ? (
-            <Loader2 size={18} className="animate-spin" />
-          ) : (
-            <StopCircle size={18} />
-          )}
+        {actualCash && !Number.isNaN(actualNum) && expectedNum !== null && (
+          <div className={`rounded-xl px-4 py-3 text-sm space-y-2 border ${hasVariance ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-100"}`}>
+            <p className={`text-xs font-bold uppercase tracking-wide ${hasVariance ? "text-amber-700" : "text-slate-500"}`}>ملخص الوردية</p>
+            <div className="space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">الرصيد المتوقع</span>
+                <span className="font-bold text-slate-700 tabular-nums">{money(expectedNum)} ج.م</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">الرصيد الفعلي</span>
+                <span className="font-bold text-slate-700 tabular-nums">{money(actualNum)} ج.م</span>
+              </div>
+              <div className={`flex justify-between border-t pt-1.5 ${hasVariance ? "border-amber-200" : "border-slate-200"}`}>
+                <span className={`font-bold ${!hasVariance ? "text-slate-500" : (variance ?? 0) < 0 ? "text-red-600" : "text-green-600"}`}>
+                  {hasVariance ? "⚠️ " : ""}فارق الوردية
+                </span>
+                <span className={`font-black tabular-nums ${!hasVariance ? "text-slate-500" : (variance ?? 0) < 0 ? "text-red-600" : "text-green-600"}`}>
+                  {hasVariance && ((variance ?? 0) < 0 ? "-" : "+")}{money(Math.abs(variance ?? 0))} ج.م
+                </span>
+              </div>
+              {hasVariance && (
+                <p className={`text-xs ${(variance ?? 0) < 0 ? "text-red-600" : "text-green-600"}`}>
+                  سيُسجَّل كـ {(variance ?? 0) < 0 ? "عجز نقدي" : "زيادة نقدية"} في الحسابات
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+        <div>
+          <label className="block text-sm font-bold text-slate-700 mb-2">ملاحظات</label>
+          <input type="text" className={inputClass} value={notes} onChange={(e) => setNotes(e.target.value)} data-testid="input-close-notes" />
+        </div>
+        {error && <div className="bg-red-50 text-red-700 text-sm font-medium rounded-xl px-4 py-3 border border-red-100">{error}</div>}
+        <button onClick={handleClosePress} disabled={mut.isPending || !actualCash} className="w-full py-2.5 bg-red-500 text-white rounded-xl font-bold hover:bg-red-600 transition disabled:opacity-60 flex items-center justify-center gap-2" data-testid="button-confirm-close-day">
+          {mut.isPending ? <Loader2 size={18} className="animate-spin" /> : <StopCircle size={18} />}
           تأكيد الإغلاق
         </button>
       </div>
     </Modal>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Transfer Modal
 // ---------------------------------------------------------------------------

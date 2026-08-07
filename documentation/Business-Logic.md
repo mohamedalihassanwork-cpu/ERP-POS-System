@@ -1,4 +1,4 @@
-# Business Logic Services
+﻿# Business Logic Services
 
 > Source files: `artifacts/api-server/src/lib/`
 
@@ -100,6 +100,8 @@ DR  COGS (5000)            300
 | Owner withdrawal | Owner Drawings (3100) | Cash Drawer (1000) |
 | Stock adjustment IN | Inventory (1200) | Treasury Variance (6000) |
 | Stock adjustment OUT | Treasury Variance (6000) | Inventory (1200) |
+| Cash variance shortage (day close) | Treasury Variance (6000) | Cash Drawer (1000) |
+| Cash variance overage (day close)  | Cash Drawer (1000) | Treasury Variance (6000) |
 
 The account code used for a treasury account's ledger side is looked up via `TREASURY_TYPE_TO_ACCOUNT_CODE` from `seed.ts`:
 

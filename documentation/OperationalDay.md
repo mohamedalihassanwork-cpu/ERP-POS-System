@@ -1,4 +1,4 @@
-# Operational Day
+﻿# Operational Day
 
 > Introduced in v2 of the Treasury & Cashier Workflow redesign.  
 > Source files: `artifacts/api-server/src/routes/operating-days.ts`, `lib/db/src/schema/operational-days.ts`
@@ -106,7 +106,7 @@ Cashier A and Cashier B can operate **simultaneously** without any conflict. The
 6. **Closing Snapshot**: Record current balances + inflow/outflow totals in `cashier_balance_snapshots` with `snapshot_type = CLOSING`.
 7. **Transfer CARD/INSTAPAY/WALLET → MAIN_SAFE**: Each non-CASH account's full balance is transferred to MAIN_SAFE (if > 0). A `treasury_transfers` record and two `treasury_transactions` (OUT from cashier account, IN to MAIN_SAFE) are created.
 8. **Transfer CASH → MAIN_SAFE**: `(actual_cash - carry_over)` is transferred to MAIN_SAFE.
-9. **Variance Zeroing**: Any remaining CASH balance above `carry_over` (due to variance) is force-zeroed via a `DAY_CLOSE_RESET` treasury transaction.
+9. **Cash Variance Reconciliation**: If `|cash_variance| > 0.001`, a `DAY_CLOSE_VARIANCE` treasury transaction is posted (OUT for shortage, IN for overage) along with a balanced GL double-entry journal: shortage -> DR Treasury Variance (6000) / CR Cash (1000); overage -> DR Cash (1000) / CR Treasury Variance (6000). The variance reason and notes (if provided) are stored in `cash_variance_reason` and `cash_variance_notes` on the `operational_days` row.
 10. **Day Closure**: Update `operational_days` row: `status = CLOSED`, `closed_at`, `closed_by`, all computed fields.
 11. **Audit Log**: Write `treasury.operational_day_closed` audit entry.
 
@@ -131,6 +131,8 @@ Cashier A and Cashier B can operate **simultaneously** without any conflict. The
 | `cash_variance` | TEXT | `actual - expected` |
 | `total_transferred_to_main_safe` | TEXT DEFAULT '0' | Total moved to MAIN_SAFE at close |
 | `notes` | TEXT | Optional cashier notes |
+| `cash_variance_reason` | TEXT | Nullable. Reason code for variance: `CASH_SHORTAGE`, `CASH_OVERAGE`, `COUNTING_ERROR`, `THEFT_OR_LOSS`, `PENDING_INVESTIGATION`, `OTHER` |
+| `cash_variance_notes` | TEXT | Nullable. Free-text notes from cashier explaining the variance |
 | `opened_by` | TEXT NOT NULL | FK → users |
 | `closed_by` | TEXT | FK → users (null if OPEN) |
 | `created_at` | INTEGER | Unix ms |
@@ -268,6 +270,7 @@ New `reference_type` values introduced for operational day workflow:
 |-------|-------------|
 | `DAY_OPEN_CARRY` | Opening carry-over cash credited to CASH drawer at day open |
 | `DAY_CLOSE_RESET` | Debit/credit used to zero the CASH drawer at day close |
+| `DAY_CLOSE_VARIANCE` | Cash variance adjustment at day close. Always paired with a double-entry GL journal to Treasury Variance (6000). Uses `description` field to store reason + notes. |
 
 ---
 

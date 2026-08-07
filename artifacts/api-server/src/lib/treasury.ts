@@ -1,31 +1,13 @@
 import { and, eq, isNull } from "drizzle-orm";
-import { db, treasuryAccountsTable, treasuryTransactionsTable } from "@workspace/db";
+import { db, treasuryAccountsTable, treasuryTransactionsTable, treasuryRefTypeEnum } from "@workspace/db";
 import { money, toNum } from "./money";
 import { getShiftStartHour, computeShiftStart } from "./shift";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type TreasuryDirection = "IN" | "OUT";
-export type TreasuryRefType =
-  | "SALE"
-  | "SALES_RETURN"
-  | "PURCHASE"
-  | "PURCHASE_RETURN"
-  | "EXPENSE"
-  | "EXPENSE_REVERSAL"
-  | "SALARY"
-  | "SALARY_REVERSAL"
-  | "WITHDRAWAL"
-  | "WITHDRAWAL_REVERSAL"
-  | "DEPOSIT"
-  | "DEPOSIT_REVERSAL"
-  | "CUSTOMER_PAYMENT"
-  | "SUPPLIER_PAYMENT"
-  | "OPENING"
-  | "TRANSFER"
-  | "ADJUSTMENT"
-  | "DAY_CLOSE_RESET"
-  | "DAY_OPEN_CARRY";
+// Derived from the schema enum so it stays in sync with the DB column automatically
+export type TreasuryRefType = (typeof treasuryRefTypeEnum)[number];
 
 export interface TreasuryPosting {
   storeId: string;

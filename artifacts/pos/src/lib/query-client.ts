@@ -58,6 +58,7 @@ export const LOOKUP_QUERY_PREFIXES: readonly string[] = [
 
   // Treasury
   "/api/treasury/accounts",
+  "/api/operating-days",
 
   // Products (appears in search dropdowns / variant pickers)
   "/api/products",

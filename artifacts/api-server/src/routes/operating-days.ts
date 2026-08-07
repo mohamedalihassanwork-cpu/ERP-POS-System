@@ -145,6 +145,8 @@ router.get(
         expectedClosingCashBalance: operationalDaysTable.expectedClosingCashBalance,
         cashVariance: operationalDaysTable.cashVariance,
         totalTransferredToMainSafe: operationalDaysTable.totalTransferredToMainSafe,
+        cashVarianceReason: operationalDaysTable.cashVarianceReason,
+        cashVarianceNotes: operationalDaysTable.cashVarianceNotes,
         notes: operationalDaysTable.notes,
       })
       .from(operationalDaysTable)
@@ -153,6 +155,7 @@ router.get(
       .orderBy(desc(operationalDaysTable.openedAt))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
+
 
     res.json({
       items: rows.map(serializeDay),
@@ -175,6 +178,21 @@ router.get(
     const storeId = req.auth!.storeId;
     const userId = req.auth!.userId;
 
+    const [cashAcctForExpected] = await db
+      .select({ 
+        id: treasuryAccountsTable.id,
+        balance: treasuryAccountsTable.balance
+      })
+      .from(treasuryAccountsTable)
+      .where(
+        and(
+          eq(treasuryAccountsTable.storeId, storeId),
+          eq(treasuryAccountsTable.type, "CASH"),
+          eq(treasuryAccountsTable.userId, userId),
+        ),
+      )
+      .limit(1);
+
     const opUser = usersTable;
     const [row] = await db
       .select({
@@ -190,6 +208,8 @@ router.get(
         expectedClosingCashBalance: operationalDaysTable.expectedClosingCashBalance,
         cashVariance: operationalDaysTable.cashVariance,
         totalTransferredToMainSafe: operationalDaysTable.totalTransferredToMainSafe,
+        cashVarianceReason: operationalDaysTable.cashVarianceReason,
+        cashVarianceNotes: operationalDaysTable.cashVarianceNotes,
         notes: operationalDaysTable.notes,
       })
       .from(operationalDaysTable)
@@ -204,7 +224,16 @@ router.get(
       .orderBy(desc(operationalDaysTable.openedAt))
       .limit(1);
 
-    res.json({ operationalDay: row ? serializeDay(row) : null });
+    // Compute expected cash balance for the UI preview (only when day is OPEN)
+    let expectedCashBalance: string | null = null;
+    if (row && cashAcctForExpected) {
+      expectedCashBalance = money(toNum(cashAcctForExpected.balance));
+    }
+
+    res.json({
+      operationalDay: row ? serializeDay(row) : null,
+      expectedCashBalance,
+    });
   },
 );
 
@@ -321,6 +350,18 @@ router.post(
     await ensureCashierAccounts(db, storeId, userId);
 
     const result = await db.transaction(async (tx) => {
+      const [cashAcct] = await tx
+        .select({ id: treasuryAccountsTable.id, balance: treasuryAccountsTable.balance })
+        .from(treasuryAccountsTable)
+        .where(
+          and(
+            eq(treasuryAccountsTable.storeId, storeId),
+            eq(treasuryAccountsTable.type, "CASH"),
+            eq(treasuryAccountsTable.userId, userId),
+          ),
+        )
+        .limit(1);
+
       const [day] = await tx
         .insert(operationalDaysTable)
         .values({
@@ -334,31 +375,44 @@ router.post(
         })
         .returning({ id: operationalDaysTable.id });
 
-      // Post an OPENING transaction to the CASH account with the opening balance
-      if (Number(openingCashBalance) > 0) {
-        const [cashAcct] = await tx
-          .select({ id: treasuryAccountsTable.id })
-          .from(treasuryAccountsTable)
-          .where(
-            and(
-              eq(treasuryAccountsTable.storeId, storeId),
-              eq(treasuryAccountsTable.type, "CASH"),
-              eq(treasuryAccountsTable.userId, userId),
-            ),
-          )
-          .limit(1);
+      if (cashAcct) {
+        const expectedOpening = toNum(cashAcct.balance);
+        const actualOpening = Number(openingCashBalance);
+        const difference = actualOpening - expectedOpening;
 
-        if (cashAcct) {
+        if (Math.abs(difference) > 0.001) {
+          const isShortage = difference < 0;
+          const absVariance = Math.abs(difference);
+          const varianceDesc = `فارق فتح اليوم التشغيلي — ${isShortage ? "عجز نقدي" : "زيادة نقدية"}`;
+
           await postTreasuryTransaction(tx, {
             storeId,
             treasuryAccountId: cashAcct.id,
-            direction: "IN",
-            amount: Number(openingCashBalance),
-            referenceType: "DAY_OPEN_CARRY",
+            direction: isShortage ? "OUT" : "IN",
+            amount: absVariance,
+            referenceType: "DAY_OPEN_VARIANCE",
             referenceId: day.id,
             operationalDayId: day.id,
-            description: "رصيد ترحيل فتح اليوم التشغيلي",
+            description: varianceDesc,
             userId,
+            allowNegative: true,
+          });
+
+          await postJournalEntry(tx, {
+            storeId,
+            userId,
+            description: varianceDesc,
+            referenceType: "DAY_OPEN_VARIANCE",
+            referenceId: day.id,
+            lines: isShortage
+              ? [
+                  { code: "6000", debit:  absVariance },  // DR Treasury Variance
+                  { code: "1000", credit: absVariance },  // CR Cash
+                ]
+              : [
+                  { code: "1000", debit:  absVariance },  // DR Cash
+                  { code: "6000", credit: absVariance },  // CR Treasury Variance
+                ],
           });
         }
       }
@@ -420,10 +474,27 @@ router.post(
       actualClosingCashBalance,
       carryOverCash = 0,
       notes,
+      varianceReason,
+      varianceNotes,
     } = req.body ?? {};
 
+    // Validate required field
     if (actualClosingCashBalance === undefined || actualClosingCashBalance === null) {
       res.status(400).json({ error: "يجب إدخال رصيد الإغلاق الفعلي للنقد" });
+      return;
+    }
+
+    // Validate variance reason if provided
+    const VALID_VARIANCE_REASONS = [
+      "CASH_SHORTAGE",
+      "CASH_OVERAGE",
+      "COUNTING_ERROR",
+      "THEFT_OR_LOSS",
+      "PENDING_INVESTIGATION",
+      "OTHER",
+    ] as const;
+    if (varianceReason !== undefined && !VALID_VARIANCE_REASONS.includes(varianceReason)) {
+      res.status(400).json({ error: "سبب الفارق النقدي غير صالح" });
       return;
     }
 
@@ -499,19 +570,7 @@ router.post(
     const shiftHour = await getShiftStartHour(storeId);
     const shiftStart = day.openedAt instanceof Date ? day.openedAt : new Date(day.openedAt);
 
-    const [{ net: cashNetDuringDay }] = await db
-      .select({
-        net: sql<string>`coalesce(sum(case when ${treasuryTransactionsTable.direction} = 'IN' then CAST(${treasuryTransactionsTable.amount} AS REAL) else -CAST(${treasuryTransactionsTable.amount} AS REAL) end), 0)`,
-      })
-      .from(treasuryTransactionsTable)
-      .where(
-        and(
-          eq(treasuryTransactionsTable.treasuryAccountId, cashAcct.id),
-          gte(treasuryTransactionsTable.createdAt, shiftStart),
-        ),
-      );
-
-    const expectedCashBalance = toNum(day.openingCashBalance) + toNum(cashNetDuringDay);
+    const expectedCashBalance = toNum(cashAcct.balance);
     const actualCash = Number(actualClosingCashBalance);
     const carryOver = Math.min(Number(carryOverCash), actualCash);
     const transferToCash = Math.max(0, actualCash - carryOver);
@@ -655,24 +714,62 @@ router.post(
         totalTransferred += cashToTransfer;
       }
 
-      // 4. Zero out CASH completely (any remaining variance goes to zero)
-      // The carry-over will stay in the CASH account
-      const currentCashBalance = toNum(cashAcct.balance);
-      const cashAfterTransfer = currentCashBalance - cashToTransfer;
-      // Any remaining CASH above carry-over (due to variance) is force-zeroed
-      const excessCash = cashAfterTransfer - carryOver;
-      if (Math.abs(excessCash) > 0.001) {
+      // 4. Reconcile cash variance with a proper double-entry GL journal entry.
+      //    The old DAY_CLOSE_RESET approach silently zeroed the balance with no
+      //    corresponding accounting entry, violating double-entry principles.
+      //    Now: shortage → DR Treasury Variance (6000) / CR Cash (1000)
+      //         overage  → DR Cash (1000) / CR Treasury Variance (6000)
+      if (Math.abs(cashVariance) > 0.001) {
+        const isShortage = cashVariance < 0;
+        const absVariance = Math.abs(cashVariance);
+
+        // Build a rich description including reason + notes for audit trail
+        const VARIANCE_REASON_LABELS: Record<string, string> = {
+          CASH_SHORTAGE:         "عجز نقدي",
+          CASH_OVERAGE:          "زيادة نقدية",
+          COUNTING_ERROR:        "خطأ في العد",
+          THEFT_OR_LOSS:         "سرقة أو ضياع",
+          PENDING_INVESTIGATION: "قيد التحقيق",
+          OTHER:                 "أخرى",
+        };
+        const baseDesc = isShortage
+          ? "فارق عجز نقدي عند إغلاق اليوم التشغيلي"
+          : "فارق زيادة نقدية عند إغلاق اليوم التشغيلي";
+        const descParts = [baseDesc];
+        if (varianceReason) descParts.push(`السبب: ${VARIANCE_REASON_LABELS[varianceReason] ?? varianceReason}`);
+        if (varianceNotes)  descParts.push(`ملاحظات: ${varianceNotes}`);
+        const varianceDesc = descParts.join(" — ");
+
+        // Treasury side: adjust CASH balance to match physical reality
         await postTreasuryTransaction(tx, {
           storeId,
           treasuryAccountId: cashAcct.id,
-          direction: excessCash > 0 ? "OUT" : "IN",
-          amount: Math.abs(excessCash),
-          referenceType: "DAY_CLOSE_RESET",
+          direction: isShortage ? "OUT" : "IN",
+          amount: absVariance,
+          referenceType: "DAY_CLOSE_VARIANCE",
           referenceId: dayId,
           operationalDayId: dayId,
-          description: "تسوية فارق إغلاق اليوم التشغيلي",
+          description: varianceDesc,
           userId,
           allowNegative: true,
+        });
+
+        // Accounting side: balanced GL entry to Treasury Variance account (6000)
+        await postJournalEntry(tx, {
+          storeId,
+          userId,
+          description: varianceDesc,
+          referenceType: "DAY_CLOSE_VARIANCE",
+          referenceId: dayId,
+          lines: isShortage
+            ? [
+                { code: "6000", debit:  absVariance },  // DR Treasury Variance
+                { code: "1000", credit: absVariance },  // CR Cash (Drawer)
+              ]
+            : [
+                { code: "1000", debit:  absVariance },  // DR Cash (Drawer)
+                { code: "6000", credit: absVariance },  // CR Treasury Variance
+              ],
         });
       }
 
@@ -689,6 +786,8 @@ router.post(
           carryOverCash: money(carryOver),
           totalTransferredToMainSafe: money(totalTransferred),
           notes: notes ?? null,
+          cashVarianceReason: varianceReason ?? null,
+          cashVarianceNotes: varianceNotes ?? null,
         })
         .where(eq(operationalDaysTable.id, dayId));
     });
@@ -724,6 +823,8 @@ router.post(
         expectedClosingCashBalance: operationalDaysTable.expectedClosingCashBalance,
         cashVariance: operationalDaysTable.cashVariance,
         totalTransferredToMainSafe: operationalDaysTable.totalTransferredToMainSafe,
+        cashVarianceReason: operationalDaysTable.cashVarianceReason,
+        cashVarianceNotes: operationalDaysTable.cashVarianceNotes,
         notes: operationalDaysTable.notes,
       })
       .from(operationalDaysTable)
@@ -732,6 +833,7 @@ router.post(
       .limit(1);
 
     res.json(serializeDay(full));
+
   },
 );
 

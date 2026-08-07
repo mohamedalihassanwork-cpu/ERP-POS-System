@@ -178,6 +178,28 @@ export const MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    version: 7,
+    name: "operational_days_variance_reason",
+    up: async (client) => {
+      // Add cash variance audit columns to operational_days.
+      // These columns record the reason and free-text notes for any cash
+      // shortage or overage detected at day close, enabling audit trails.
+      const cols = await client.execute(`PRAGMA table_info(operational_days);`);
+      const colNames: string[] = cols.rows.map((r: any) => r.name);
+
+      if (!colNames.includes("cash_variance_reason")) {
+        await client.execute(
+          `ALTER TABLE operational_days ADD COLUMN cash_variance_reason TEXT;`,
+        );
+      }
+      if (!colNames.includes("cash_variance_notes")) {
+        await client.execute(
+          `ALTER TABLE operational_days ADD COLUMN cash_variance_notes TEXT;`,
+        );
+      }
+    },
+  },
 ];
 
 // ── Atomic Migration Runner ───────────────────────────────────────────────────

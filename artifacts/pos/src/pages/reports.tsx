@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import {
   FileBarChart,
   ShoppingCart,
@@ -817,6 +817,7 @@ const translateRef = (ref: string) => {
     TRANSFER_IN: "تحويل وارد",
     TRANSFER_OUT: "تحويل صادر",
     DAY_CLOSE_RESET: "إغلاق يوم تشغيلي",
+    DAY_CLOSE_VARIANCE: "فارق إغلاق الوردية",
     DAY_OPEN_CARRY: "ترحيل فتح اليوم",
     ADVANCE: "سلفة",
     ADVANCE_REVERSAL: "إلغاء سلفة",
